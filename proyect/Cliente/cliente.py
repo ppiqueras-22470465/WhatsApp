@@ -5,16 +5,14 @@ ip = socket.gethostbyname(socket.gethostname()) # Esto lo hago de forma dinámic
 socket_send = 666
 socket_receive = 999
 addr = (ip, socket_receive)
-connection = True
-connection_client = True
 client_list = []
 disconnect_msg = "!DISCONNECT"
 
 def client_connection():
-    global connection
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect(addr)
     print(f"[CONNECTED TO] CLIENT CONNECTED TO SERVER AT {ip}:{socket_receive}")
+    connection = True
     while connection:
         message = input("> ")
         client.send(message.encode())

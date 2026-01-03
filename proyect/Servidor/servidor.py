@@ -7,25 +7,24 @@ ip = socket.gethostbyname(socket.gethostname()) # Esto lo hago de forma dinámic
 socket_send = 666
 socket_receive = 999
 addr = (ip, socket_receive)
-connection = True
-connection_client = True
 client_list = []
 disconnect_msg = "!DISCONNECT"
 
-def handle_client(client_socket, addr):
+def handle_client(conn, addr):
     global connection_client
-    print(f"[NEW CONNECTION] {addr} CONNECTED.")
+    print(f"[NEW CONNECTION 666] {addr} CONNECTED.")
+    connection_client = True # No podemos usar las globales es mejor generar las variables dentro
     while connection_client:
-        message = client_socket.recv(1024).decode()
+        message = conn.recv(1024).decode()
         if message == disconnect_msg:
             connection_client = False
-            client_socket.close()
+            conn.close()
         else:
-            client_list.append(client_socket)
+            client_list.append(conn)
             print(f"[{addr}] {message}")
             message = f"[MESSAGE RECEIVED] {message}]"
-            client_socket.send(message.encode())
-        client_socket.close()
+            conn.send(message.encode())
+        conn.close()
 
 
 
@@ -36,7 +35,7 @@ def server():
     server.bind(addr)
     server.listen()
     print(f"[LISTENING] I AM LISTENING IN {ip}:{socket_receive}")
-
+    connection = True
     while connection:
         num_clients = 0
         connection_client, addr = server.accept()
