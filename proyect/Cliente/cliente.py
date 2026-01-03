@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 import os
 
+<<<<<<< HEAD
 # Configuración
 SERVER_IP = "127.0.0.1"
 MI_USUARIO = "" 
@@ -47,6 +48,25 @@ def enviar_al_666(mensaje_formateado):
             # - Cambiar estado a ENVIADO o RECIBIDO en el string?
             # - Llamar a guardar_localmente(mensaje_formateado, es_temporal=False).
             pass
+=======
+ip = socket.gethostbyname(socket.gethostname()) # Esto lo hago de forma dinámica
+socket_send = 666
+socket_receive = 999
+addr = (ip, socket_receive)
+client_list = []
+disconnect_msg = "!DISCONNECT"
+
+def client_connection():
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.connect(addr)
+    print(f"[CONNECTED TO] CLIENT CONNECTED TO SERVER AT {ip}:{socket_receive}")
+    connection = True
+    while connection:
+        message = input("> ")
+        client.send(message.encode())
+        if message == disconnect_msg:
+            connection = False
+>>>>>>> 236d25ecf19ec582e989c7b4d8a0c79f9a6a91d1
         else:
             print("Error en el envío")
             
