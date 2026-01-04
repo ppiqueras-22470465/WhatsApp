@@ -17,8 +17,14 @@ def validar_login(datos):
     # - Hacer split(':') a cada línea para separar usuario y contraseña.
     # - Comparar con las variables que vienen en 'datos'.
     # - Si coincide, retornar True. Si termina el archivo sin coincidencia, False.
-    print(f"Validando credenciales: {datos}")
-    return True
+
+    datos = datos.split(":")
+    for linea in open("usuarios.txt", "r"):
+        usuario_archivo, contrasena_archivo = linea.strip().split(":")
+        if datos[1] == usuario_archivo and datos[2] == contrasena_archivo:
+            print(f"Validando credenciales: {datos}")
+            return True
+    return False
 
 def guardar_mensaje_en_archivo(mensaje_formateado):
     """
