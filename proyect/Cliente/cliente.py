@@ -16,20 +16,44 @@ def obtener_timestamp():
     return now.strftime("%Y%m%d%H%M%S")
 
 def formatear_mensaje(origen, destino, estado, mensaje):
-    """
-    Crea el string separado por ; según el protocolo.
-    Origen;Destino;Timestamp;Estado;TiempoEstado;Mensaje [cite: 72-86]
-    """
+    """Crea el string separado por ;"""
     ts = obtener_timestamp()
     return f"{origen};{destino};{ts};{estado};{ts};\"{mensaje}\""
 
-def guardar_localmente(mensaje, es_temporal=False):
-    # TODO 8: Guardado local en Cliente[cite: 53, 57].
-    # - Si es_temporal es True: nombre archivo = "Usuario_Destino_tmp.txt".
-    # - Si es normal: nombre archivo = "Usuario_Destino.txt".
-    # - Escribir el mensaje al final del archivo.
-    pass
+def guardar_localmente(mensaje_formateado, es_temporal=False):
+    """
+    Guarda el mensaje en el archivo correcto: MIUSUARIO_OTROUSUARIO.txt
+    """
+    try:
+        # 1. Separamos el mensaje para saber quién es el "OTRO"
+        partes = mensaje_formateado.split(";")
+        origen = partes[0].replace("@", "")
+        destino = partes[1].replace("@", "")
 
+        if origen == MI_USUARIO:
+            otro_usuario = destino # Si yo soy el origen, el archivo es con el destino.
+        else:
+            otro_usuario = origen # Si yo soy el destino, el archivo es con el origen.
+
+        # 2. Creamos el nombre del archivo
+        nombre_archivo = f"{MI_USUARIO}_{otro_usuario}"
+
+        if es_temporal:
+            nombre_archivo += "_tmp.txt"  # [cite: 57]
+        else:
+            nombre_archivo += ".txt"
+
+        # 3. Guardamos en la carpeta 'historiales' para ser ordenados
+        if not os.path.exists("Historiales"):
+            os.makedirs("Historiales")
+
+        ruta = os.path.join("Historiales", nombre_archivo)
+
+        # 'a' significa append (añadir al final sin borrar lo anterior)
+        with open(ruta, "a") as f:
+            f.write(mensaje_formateado + "\n")
+    except Exception as e:
+        print(f"Error guardando archivo: {e}")
 # --- FUNCIONES DE RED ---
 
 def enviar_al_666(mensaje_formateado):
