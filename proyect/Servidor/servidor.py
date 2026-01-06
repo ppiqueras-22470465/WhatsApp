@@ -1,9 +1,13 @@
 import socket
 import threading
-import os
+import datetime  # Para las fechas
+import os  # Para los archivos(leer, escribir etc..)
+
+from proyect.Cliente.cliente import contenido
 
 HOST = "127.0.0.1"
 ARCHIVO_USUARIOS = "usuarios.txt"
+
 
 # --- FUNCIONES AUXILIARES (LÓGICA) ---
 
@@ -14,11 +18,12 @@ def validar_login(usuario_recibido, clave_recibida):
         archivo.close()
 
         for linea in lineas:
-            linea = linea.strip() # Quito los espacios vacío
-            if linea: # Sí sigue habiendo línea
-                partes = linea.split(":") # Como está separado por : los leemos así
-                if len(partes) == 2: # Si el formato es válido
-                    if partes[0] == usuario_recibido and partes[1] == clave_recibida: # Sí coinciden usuario y contraseña
+            linea = linea.strip()  # Quito los espacios vacío
+            if linea:  # Sí sigue habiendo línea
+                partes = linea.split(":")  # Como está separado por : los leemos así
+                if len(partes) == 2:  # Si el formato es válido
+                    if partes[0] == usuario_recibido and partes[
+                        1] == clave_recibida:  # Sí coinciden usuario y contraseña
                         return True
             else:
                 print(f"[ERROR] No se encuentra el archivo {ARCHIVO_USUARIOS}")
@@ -29,32 +34,32 @@ def validar_login(usuario_recibido, clave_recibida):
 
 
 def guardar_mensaje_en_archivo(mensaje_formateado):
-    mensaje = mensaje_formateado.decode() # Cojo el mensaje del usuario
-    partes = mensaje.split(";") # Separo el mensaje que me envia por ;
-    if len(partes) >= 6: # El mensaje que se envia es [emisor;receptor;addrs;estado;mensaje]
-        emisor = partes[0] #.replace("@","") Por si crea mal los archivos
+    mensaje = mensaje_formateado.decode()  # Cojo el mensaje del usuario
+    partes = mensaje.split(";")  # Separo el mensaje que me envia por ;
+    if len(partes) >= 6:  # El mensaje que se envia es [emisor;receptor;addrs;estado;mensaje]
+        emisor = partes[0]  # .replace("@","") Por si crea mal los archivos
         receptor = partes[1]
-        contenido_mensaje = partes[5]
         print(f"Mensaje de {emisor} para {receptor}")
 
         archivo = f"{emisor}_{receptor}.txt"
         archivo_invertido = f"{receptor}_{emisor}.txt"
 
-        if os.path.exists(archivo): # - Comprobar con os.path.exists() si existe "remitente_destinatario.txt".
+        if os.path.exists(archivo):  # - Comprobar con os.path.exists() si existe "remitente_destinatario.txt".
             archivo_final = archivo
-        elif os.path.exists(archivo_invertido): # - Si no, comprobar si existe "destinatario_remitente.txt".
+        elif os.path.exists(archivo_invertido):  # - Si no, comprobar si existe "destinatario_remitente.txt".
             archivo_final = archivo_invertido
         else:
             archivo_final = archivo
         try:
             archivo_final_escribir = open(archivo_final, "a")
-            archivo_final_escribir.write(mensaje+"\n")
+            archivo_final_escribir.write(mensaje + "\n")
             archivo_final_escribir.close()
             print(f"[SISTEMA] Guardado en: {archivo_final}")
         except Exception as e:
             print(f"[ERROR] {e}")
     else:
         print(f"[ERROR] El mensaje recibido no tiene el formato correcto")
+
 
 # --- FUNCIONES NUEVAS NECESARIAS ---
 
@@ -70,7 +75,7 @@ def obtener_mensajes_pendientes(emisor, receptor, ultimo_timestamp):
         archivo_final = archivo_invertido
     else:
         # Si no encontramos el archivo devolvemos vacío
-         return []
+        return []
     mensaje = []
     try:
         # Usamos el r para leer y seguimos la misma logica usada en validar_login
@@ -79,7 +84,7 @@ def obtener_mensajes_pendientes(emisor, receptor, ultimo_timestamp):
         archivo_leer.close()
         for linea in lineas:
             linea = linea.strip()
-            partes=linea.split(";")
+            partes = linea.split(";")
             if len(partes) >= 6:
                 timestamp_mensaje = partes[2]
                 # Comparó las cadenas
@@ -93,33 +98,59 @@ def obtener_mensajes_pendientes(emisor, receptor, ultimo_timestamp):
 
     return mensaje
 
+
 # --- HILOS DE CONEXIÓN ---
 
 def puerto_666():
-    """Gestiona el ENVÍO de mensajes (Cliente -> Servidor) [cite: 14]"""
+    """Gestiona el ENVÍO de mensajes (Cliente -> Servidor)"""
     servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     servidor.bind((HOST, 666))
     servidor.listen()
     print("Servidor [666]: Listo para recibir mensajes.")
 
-    while True:
-        conn, addr = servidor.accept()
-        datos = conn.recv(1024).decode()
+    conexion_servidor = True
 
-        if datos:
-            # Aquí llega el mensaje formateado: Origen;Destino;...
-            print(f"[666] Recibido: {datos}")
+    while conexion_servidor:
+        try:
+            conn, addr = servidor.accept()
+            mensaje = conn.recv(1024).decode()
 
-            # TODO 5: Cambiar estado a RECIBIDO.
-            # - Antes de guardar, reemplazar en el string "ENVIADO" por "RECIBIDO"[cite: 79].
-            # - Actualizar el timestamp de estado.
-            guardar_mensaje_en_archivo(datos)
+            if mensaje != "":
+                print(f"[666] Recibido: {mensaje}")
+                partes = mensaje.split(";")
+                if mensaje == "!DESCONECTAR":
+                    print(f"[666] Apagando")
+                    conn.send(f"[666] Apagando".encode())
+                    conexion_servidor = False
+                # Implementamos las logica como en los anteriores
+                elif len(partes) >= 6:
+                    emisor = partes[0]
+                    receptor = partes[1]
+                    timestamp_original = partes[2]  # Para poder actualizar la hora
+                    contenido_mensaje = partes[5]
+                    nuevo_estado = "RECIBIDO"
+                    ahora = datetime.datetime.now()
+                    nuevo_timestamp_estado = ahora.strftime("%Y%m%d%H%M%S")
 
+                    mensaje_procesado = (
+                            emisor + ";" +
+                            receptor + ";" +
+                            timestamp_original + ";" +
+                            nuevo_estado + ";" +
+                            nuevo_timestamp_estado + ";" +
+                            contenido_mensaje
+                    )
 
-            # Confirmamos recepción obligatoria [cite: 10]
-            conn.send("OK".encode())
+                    guardar_mensaje_en_archivo(mensaje_procesado.encode())
+                    conn.send("OK".encode())
+                else:
+                    print("[ERROR] Faltan campos en el mensaje")
+                    conn.send("KO".encode())
+            conn.close()
+            conexion_servidor = False
+        except Exception as e:
+            print(f"[ERROR] {e}")
 
-        conn.close()
 
 def puerto_999():
     """Gestiona RECEPCIÓN y LOGIN (Cliente <-> Servidor) [cite: 21]"""
@@ -152,7 +183,7 @@ def puerto_999():
             #    - conn.send(mensaje)
             #    - conn.recv(1024) -> Esperar "OK" de cada mensaje.
 
-            conn.send("OK".encode()) # Esto es temporal, borrar al hacer el TODO 6
+            conn.send("OK".encode())  # Esto es temporal, borrar al hacer el TODO 6
 
         # TODO 7: Implementar LIST[cite: 108].
         # - Añadir un elif "LIST" in datos:
@@ -160,6 +191,7 @@ def puerto_999():
         # - Enviar la lista siguiendo la misma lógica de bucle que el UPDATE.
 
         conn.close()
+
 
 # --- ARRANQUE ---
 hilo_envios = threading.Thread(target=puerto_666)
