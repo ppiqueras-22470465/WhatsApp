@@ -61,27 +61,28 @@ def enviar_al_666(mensaje_formateado):
     """Envía mensaje al puerto de envíos [cite: 14]"""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(10) # Importante el timeout [cite: 116]
+        s.settimeout(10)  # Importante el timeout [cite: 116]
         s.connect((SERVER_IP, 666))
         s.send(mensaje_formateado.encode())
-        
+
         resp = s.recv(1024).decode()
-        
+
         if resp == "OK":
-            # TODO 9: Éxito.
-            # - Cambiar estado a ENVIADO o RECIBIDO en el string?
-            # - Llamar a guardar_localmente(mensaje_formateado, es_temporal=False).
-            pass
+            partes = mensaje_formateado.split(";")
+            partes[3] = "ENVIADO"  # Estado confirmado por el servidor
+            mensaje_ok = ";".join(partes)
+
+            # Guardamos en local como definitivo
+            guardar_localmente(mensaje_ok, es_temporal=False)
+
         else:
             print("Error en el envío")
-            
+
         s.close()
-        
+
     except Exception as e:
-        # TODO 10: Gestión de OFFLINE.
-        # - Si entra aquí, el servidor está caído.
-        # - Llamar a guardar_localmente(mensaje_formateado, es_temporal=True).
         print(f"Servidor no disponible. Guardando en _tmp. Error: {e}")
+        guardar_localmente(mensaje_formateado, es_temporal=True)
 
 def obtener_ultimo_timestamp_local(usuario_contacto):
     try:
