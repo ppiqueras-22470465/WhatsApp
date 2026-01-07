@@ -49,64 +49,66 @@ def validar_archivo(emisor, receptor):
             archivo_final = archivo
 
     return archivo_final
+#
+# def obtener_mensajes_pendientes(emisor, receptor ,ultimo_timestamp):
+#     archivo_final = validar_archivo(emisor, receptor)
+#     mensaje = []
+#     try:
+#         # Usamos el r para leer y seguimos la misma logica usada en validar_login
+#         archivo_leer = open(archivo_final, "r")
+#         lineas = archivo_leer.readlines()
+#         archivo_leer.close()
+#         for linea in lineas:
+#             linea = linea.strip()
+#             partes = linea.split(";")
+#             if len(partes) >= 6:
+#                 timestamp_mensaje = partes[2]
+#                 # Comparó las cadenas
+#                 if timestamp_mensaje > ultimo_timestamp:
+#                     mensaje.append(linea)
+#
+#     except FileNotFoundError:
+#         return []  # Si falla devuelvo vacía
+#     except Exception as e:
+#         print(f"[ERROR LECTURA] {e}")
+#         return []
+#
+#     return mensaje
 
-def obtener_mensajes_pendientes(emisor, receptor ,ultimo_timestamp):
-    archivo_final = validar_archivo(emisor, receptor)
-    mensaje = []
-    try:
-        # Usamos el r para leer y seguimos la misma logica usada en validar_login
-        archivo_leer = open(archivo_final, "r")
-        lineas = archivo_leer.readlines()
-        archivo_leer.close()
-        for linea in lineas:
-            linea = linea.strip()
-            partes = linea.split(";")
-            if len(partes) >= 6:
-                timestamp_mensaje = partes[2]
-                # Comparó las cadenas
-                if timestamp_mensaje > ultimo_timestamp:
-                    mensaje.append(linea)
-    except FileNotFoundError:
-        return []  # Si falla devuelvo vacía
-    except Exception as e:
-        print(f"[ERROR LECTURA] {e}")
-        return []
-
-    return mensaje
-
-def guardar_mensaje_en_archivo(mensaje_formateado):
-    mensaje = mensaje_formateado.decode()  # Cojo el mensaje del usuario
-    partes = mensaje.split(";")  # Separo el mensaje que me envia por ;
-    if len(partes) >= 6:  # El mensaje que se envia es [emisor;receptor;addrs;estado;mensaje]
-        emisor = partes[0].replace("@", "")
-        receptor = partes[1].replace("@", "")
-        print(f"Mensaje de {emisor} para {receptor}")
-        archivo_final = validar_archivo(emisor,receptor)
-
-        try:
-            archivo_final_escribir = open(archivo_final, "a")
-            archivo_final_escribir.write(mensaje + "\n")
-            archivo_final_escribir.close()
-            print(f"[SISTEMA] Guardado en: {archivo_final}")
-            chat_creado = False
-            try:
-                indice = open("indice_chats.txt", "r")
-                indice_chats = indice.readlines()
-                indice.close()
-                # Me lo recorro en busqueda de la conversación
-                for i in range(len(indice_chats)):
-                    if indice_chats[i].strip() == archivo_final:
-                        chat_creado = True
-
-            except FileNotFoundError:
-                chat_creado = False
-            # Si no he encontrado el chat lo tengo que crear
-            if chat_creado == False:
-
-        except Exception as e:
-            print(f"[ERROR] {e}")
-    else:
-        print(f"[ERROR] El mensaje recibido no tiene el formato correcto")
+# def guardar_mensaje_en_archivo(mensaje_formateado):
+#     mensaje = mensaje_formateado.decode()  # Cojo el mensaje del usuario
+#     partes = mensaje.split(";")  # Separo el mensaje que me envia por ;
+#     if len(partes) >= 6:  # El mensaje que se envia es [emisor;receptor;addrs;estado;mensaje]
+#         emisor = partes[0].replace("@", "")
+#         receptor = partes[1].replace("@", "")
+#         print(f"Mensaje de {emisor} para {receptor}")
+#         archivo_final = validar_archivo(emisor,receptor)
+#
+#         try:
+#             archivo_final_escribir = open(archivo_final, "a")
+#             archivo_final_escribir.write(mensaje + "\n")
+#             archivo_final_escribir.close()
+#             print(f"[SISTEMA] Guardado en: {archivo_final}")
+#             chat_creado = False
+#             try:
+#                 indice = open("indice_chats.txt", "r")
+#                 indice_chats = indice.readlines()
+#                 indice.close()
+#                 # Me lo recorro en busqueda de la conversación
+#                 for i in range(len(indice_chats)):
+#                     if indice_chats[i].strip() == archivo_final:
+#                         chat_creado = True
+#
+#             except FileNotFoundError:
+#                 chat_creado = False
+#             # Si no he encontrado el chat lo tengo que crear
+#             if chat_creado == False:
+#                 chat_creado = False
+#
+#         except Exception as e:
+#             print(f"[ERROR] {e}")
+#     else:
+#         print(f"[ERROR] El mensaje recibido no tiene el formato correcto")
 
 
 # --- FUNCIONES NUEVAS NECESARIAS ---
