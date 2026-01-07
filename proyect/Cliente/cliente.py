@@ -22,38 +22,39 @@ def formatear_mensaje(origen, destino, estado, mensaje):
 
 def guardar_localmente(mensaje_formateado, es_temporal=False):
     """
-    Guarda el mensaje en el archivo correcto: MIUSUARIO_OTROUSUARIO.txt
+    Guarda el mensaje en el archivo correcto: MI_USUARIO_OTROUSUARIO.txt
+    (Asume que la carpeta 'Historiales' ya existe)
     """
     try:
-        # 1. Separamos el mensaje para saber quién es el "OTRO"
+        # 1. Separar el mensaje para saber quién es el "OTRO"
         partes = mensaje_formateado.split(";")
         origen = partes[0].replace("@", "")
         destino = partes[1].replace("@", "")
 
+        # Determinar con quién es el historial
         if origen == MI_USUARIO:
-            otro_usuario = destino # Si yo soy el origen, el archivo es con el destino.
+            otro_usuario = destino
         else:
-            otro_usuario = origen # Si yo soy el destino, el archivo es con el origen.
+            otro_usuario = origen
 
-        # 2. Creamos el nombre del archivo
-        nombre_archivo = f"{MI_USUARIO}_{otro_usuario}"
-
+        # 2. Construir nombre del archivo
+        nombre_archivo = MI_USUARIO + "_" + otro_usuario
         if es_temporal:
-            nombre_archivo += "_tmp.txt"  # [cite: 57]
+            nombre_archivo += "_tmp.txt"
         else:
             nombre_archivo += ".txt"
 
-        # 3. Guardamos en la carpeta 'historiales' para ser ordenados
-        if not os.path.exists("Historiales"):
-            os.makedirs("Historiales")
+        # 3. Construir ruta manualmente (sin os.path)
+        ruta = "Historiales/" + nombre_archivo
 
-        ruta = os.path.join("Historiales", nombre_archivo)
+        # 4. Guardar en modo append
+        f = open(ruta, "a")
+        f.write(mensaje_formateado + "\n")
+        f.close()
 
-        # 'a' significa append (añadir al final sin borrar lo anterior)
-        with open(ruta, "a") as f:
-            f.write(mensaje_formateado + "\n")
     except Exception as e:
         print(f"Error guardando archivo: {e}")
+
 # --- FUNCIONES DE RED ---
 
 def enviar_al_666(mensaje_formateado):
@@ -81,6 +82,119 @@ def enviar_al_666(mensaje_formateado):
         # - Si entra aquí, el servidor está caído.
         # - Llamar a guardar_localmente(mensaje_formateado, es_temporal=True).
         print(f"Servidor no disponible. Guardando en _tmp. Error: {e}")
+
+def obtener_ultimo_timestamp_local(usuario_contacto):
+    try:
+        ruta = "Historiales/" + MI_USUARIO + "_" + usuario_contacto + ".txt" # Construimos la ruta manualmente
+
+        f = open(ruta, "r") # Intentamos abrir el archivo; si no existe, saltará al except
+        lineas = f.readlines() # Leemos todas las líneas
+        f.close() # Cerramos el archivo
+
+        if len(lineas) == 0: # Si el archivo está vacío, no hay mensajes previos
+            return "00000000000000"
+
+        ultima_linea = lineas[-1] # Aquí cogemos la última línea del historial y extraemos el timestamp
+        partes = ultima_linea.split(";")
+
+        if len(partes) <= 2: # Sin esto petaba, así nos aseguramos de que haya las suficientes partes en el mensaje
+            return "00000000000000"
+        else:
+            return partes[2] # Devolvemos el timestamp original del mensaje
+
+    except Exception:
+        return "00000000000000" # Si el archivo no existe o algo falla, devolvemos timestamp cero
+
+def procesar_mensajes_offline():
+    ###### FUNCION POR TERMINAR
+    """
+    [cite_start]Busca archivos _tmp, intenta enviarlos y si tiene éxito, los borra. [cite: 58]
+    """
+    if not os.path.exists("Historiales"):
+        return
+
+    # Buscar archivos temporales
+    patron = os.path.join("Historiales", "*_tmp.txt")
+    lista_archivos = glob.glob(patron)
+
+    if lista_archivos:
+        print(f"--- Procesando {len(lista_archivos)} archivos pendientes ---")
+
+    for ruta_archivo in lista_archivos:
+        enviados_ok = True
+        lineas_pendientes = []
+
+        try:
+            # Leer contenido
+            with open(ruta_archivo, "r") as f:
+                lineas_pendientes = f.readlines()
+
+            # Intentar reenviar uno a uno
+            for linea in lineas_pendientes:
+                linea = linea.strip()
+                if not linea: continue
+
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(5)
+                    s.connect((SERVER_IP, 666))
+                    s.send(linea.encode())
+                    resp = s.recv(1024).decode()
+                    s.close()
+
+                    if resp == "OK":
+                        print("Recuperado y enviado mensaje pendiente.")
+                        guardar_localmente(linea, es_temporal=False)
+                    else:
+                        enviados_ok = False
+                except:
+                    enviados_ok = False
+
+            # Si todo salió bien, borramos el temporal
+            if enviados_ok:
+                os.remove(ruta_archivo)
+
+        except Exception as e:
+            print(f"Error procesando offline: {e}")
+
+
+def gestionar_comando_lista():
+    """Implementa el comando @lista [cite: 38]"""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(10)
+        s.connect((SERVER_IP, 999))
+
+        # [cite_start]Formato LIST: @Yo;@;Time;LIST;000;"" [cite: 120]
+        msg = f"@{MI_USUARIO};@;{obtener_timestamp()};LIST;00000000000000;\"\""
+        s.send(msg.encode())
+
+        # Recibir cabecera con cantidad
+        cabecera = s.recv(1024).decode()
+        # Parsear cantidad (está en el último campo entre comillas)
+        # Ejemplo: ...;LIST;...;"5"
+        partes = cabecera.split(";")
+        cantidad_str = partes[5].replace('"', '')
+        cantidad = int(cantidad_str)
+
+        s.send("OK".encode())  # Confirmamos cabecera
+
+        print(f"\n--- LISTA DE CONVERSACIONES ({cantidad}) ---")
+        for i in range(cantidad):
+            datos_chat = s.recv(1024).decode()
+            # Parsear para mostrar bonito
+            # Formato recibido: Origen;Destino;...;LIST;...;"Pendientes"
+            p = datos_chat.split(";")
+            usuario_remoto = p[1].replace("@", "")  # El destino en la lista es el otro
+            pendientes = p[5].replace('"', '')
+
+            print(f"{i + 1}. @{usuario_remoto} ({pendientes} mensajes nuevos)")
+
+            s.send("OK".encode())
+
+        s.close()
+    except Exception as e:
+        print(f"Error al pedir lista: {e}")
 
 def hilo_recepcion_actualizaciones():
     """
@@ -124,8 +238,7 @@ def sistema_login():
     password = input("Contraseña: ")
     
     cadena_login = f"LOGIN:{user}:{password}"
-    
-    # TODO 12: Envolver en Try/Except por si servidor no está encendido.
+
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect((SERVER_IP, 999)) 
