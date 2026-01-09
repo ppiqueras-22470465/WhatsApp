@@ -27,6 +27,10 @@ def guardar_localmente(mensaje_formateado, es_temporal=False):
     """
     try:
         # 1. Separar el mensaje para saber quién es el "OTRO"
+    Guarda el mensaje en el archivo correcto: MIUSUARIO_OTROUSUARIO.txt
+    """
+    try:
+        # 1. Separamos el mensaje para saber quién es el "OTRO"
         partes = mensaje_formateado.split(";")
         origen = partes[0].replace("@", "")
         destino = partes[1].replace("@", "")
@@ -55,6 +59,30 @@ def guardar_localmente(mensaje_formateado, es_temporal=False):
     except Exception as e:
         print(f"Error guardando archivo: {e}")
 
+        if origen == MI_USUARIO:
+            otro_usuario = destino # Si yo soy el origen, el archivo es con el destino.
+        else:
+            otro_usuario = origen # Si yo soy el destino, el archivo es con el origen.
+
+        # 2. Creamos el nombre del archivo
+        nombre_archivo = f"{MI_USUARIO}_{otro_usuario}"
+
+        if es_temporal:
+            nombre_archivo += "_tmp.txt"  # [cite: 57]
+        else:
+            nombre_archivo += ".txt"
+
+        # 3. Guardamos en la carpeta 'historiales' para ser ordenados
+        if not os.path.exists("Historiales"):
+            os.makedirs("Historiales")
+
+        ruta = os.path.join("Historiales", nombre_archivo)
+
+        # 'a' significa append (añadir al final sin borrar lo anterior)
+        with open(ruta, "a") as f:
+            f.write(mensaje_formateado + "\n")
+    except Exception as e:
+        print(f"Error guardando archivo: {e}")
 # --- FUNCIONES DE RED ---
 
 def enviar_al_666(mensaje_formateado):

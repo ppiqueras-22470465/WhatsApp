@@ -15,6 +15,7 @@ lista_mensajes = []
 sem_lista_mensajes = threading.Semaphore(1)
 
 
+
 # --- FUNCIONES AUXILIARES (LÓGICA) ---
 
 def validar_login(usuario, password):
