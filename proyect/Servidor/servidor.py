@@ -42,25 +42,20 @@ def validar_login(usuario, password):
 
 
 def validar_archivo(emisor, receptor):
-    # Generamos los dos nombres posibles A_B.txt o B_A.txt
-    archivo = f"{emisor}_{receptor}.txt"
-    archivo_invertido = f"{receptor}_{emisor}.txt"
+    archivo = f"logs/{emisor}_{receptor}.txt"
+    archivo_invertido = f"logs/{receptor}_{emisor}.txt"
 
-    # Intentamos abrir el primero a ver si existe
     try:
         archivo_final = open(archivo, "r")
         archivo_final.close()
         archivo_final = archivo
     except FileNotFoundError:
-        # Si falla, intentamos el segundo
         try:
             archivo_final = open(archivo_invertido, "r")
             archivo_final.close()
             archivo_final = archivo_invertido
         except FileNotFoundError:
-            # Si ninguno existe, devolvemos el formato estándar
             archivo_final = archivo
-
     return archivo_final
 
 
@@ -182,9 +177,8 @@ def atender_cliente_666(conn):
         while conectado:
             datos = conn.recv(1024)
 
-            if not datos:
+            if len(datos)==0:
                 conectado = False
-                break
 
             mensaje = datos.decode().strip()
             print(f"[666] Recibido: {mensaje}")
@@ -258,86 +252,132 @@ def atender_cliente_999(conn):
 
         while conectado:
             datos = conn.recv(1024)
-            if not datos:
-                conectado = False
-                break
 
-            mensaje = datos.decode().strip()
-            print(f"[999] Comando: {mensaje}")
+            # CORRECCIÓN DE FLUJO: Usamos if/else para no procesar si se desconectó
+            if len(datos) > 0:
+                mensaje_raw = datos.decode().strip()
+                print(f"[999] Recibido: {mensaje_raw}")
 
-            # LOGIN
-            if mensaje.startswith("LOGIN"):
-                partes = mensaje.split(";")
-                if len(partes) < 3: partes = mensaje.split(":")  # Compatibilidad
+                # 1. GESTIÓN DE LOGIN (Formato Excepción: LOGIN:User:Pass)
+                if mensaje_raw.startswith("LOGIN"):
+                    partes = mensaje_raw.split(":")
+                    if len(partes) == 3:
+                        user_temp = partes[1].replace("@", "")
+                        pass_temp = partes[2].replace("@", "")
 
-                if len(partes) == 3:
-                    user_temp = partes[1].replace("@", "")
-                    pass_temp = partes[2].replace("@", "")
-
-                    if validar_login(user_temp, pass_temp):
-                        usuario_logueado = user_temp
-                        conn.send("OK".encode())
+                        if validar_login(user_temp, pass_temp):
+                            usuario_logueado = user_temp
+                            conn.send("OK".encode())
+                        else:
+                            conn.send("KO".encode())
                     else:
                         conn.send("KO".encode())
+
+                # 2. COMANDOS ESTÁNDAR (Requiere Login + Formato 6 campos)
                 else:
-                    conn.send("ERROR FORMATO".encode())
+                    if usuario_logueado:
+                        partes = mensaje_raw.split(";")
 
-            # LIST (Sin usar OS, usando try/except)
-            elif mensaje == "LIST" and usuario_logueado:
-                lista_mis_chats = ""
+                        # PDF[cite: 72]: El formato debe ser separado por ;
+                        if len(partes) >= 6:
+                            origen = partes[0]
+                            destino = partes[1]
+                            comando = partes[3]  # PDF[cite: 103]: El comando va en el estado
+                            contenido = partes[5]
 
-                if sem_lista_mensajes.acquire(timeout=2):
-                    try:
-                        f = open("indice_chats.txt", "r")
-                        chats = f.readlines()
-                        f.close()
+                            # --- COMANDO UPDATE ---
+                            if comando == "UPDATE":
+                                # PDF[cite: 105]: Update solicita mensajes posteriores al timestamp
+                                timestamp_filtro = contenido.replace('"', '')
 
-                        for linea in chats:
-                            if usuario_logueado in linea:
-                                lista_mis_chats += linea.strip() + "#"
-                    except FileNotFoundError:
-                        lista_mis_chats = "VACIO"
-                    finally:
-                        sem_lista_mensajes.release()
+                                nuevos = obtener_mensajes_pendientes(usuario_logueado, destino.replace("@", ""),
+                                                                     timestamp_filtro)
+                                cantidad = len(nuevos)
 
-                if lista_mis_chats == "":
-                    lista_mis_chats = "VACIO"
-                conn.send(lista_mis_chats.encode())
+                                # PROTOCOLO[cite: 107]: Enviar primero un mensaje con el número entero
+                                ts_ahora = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+                                cabecera = f"{origen};{destino};{ts_ahora};UPDATE;{ts_ahora};\"{cantidad}\""
+                                conn.send(cabecera.encode())
 
-            # UPDATE
-            elif mensaje.startswith("UPDATE") and usuario_logueado:
-                partes = mensaje.split(";")
-                if len(partes) == 3:
-                    amigo = partes[1]
-                    timestamp_cliente = partes[2]
+                                # Esperar OK
+                                confirmacion = conn.recv(1024).decode()
+                                if confirmacion.strip() == "OK":
+                                    # Enviar mensajes UNO A UNO [cite: 107]
+                                    i = 0
+                                    while i < cantidad:
+                                        msg = nuevos[i]
+                                        conn.send(msg.encode())
+                                        # Esperar OK tras cada mensaje
+                                        conn.recv(1024)
+                                        i = i + 1
+                                else:
+                                    print("[ERROR] Cliente no confirmó cabecera UPDATE")
 
-                    nuevos = obtener_mensajes_pendientes(usuario_logueado, amigo, timestamp_cliente)
+                            # --- COMANDO LIST ---
+                            elif comando == "LIST":
+                                lista_chats_encontrados = []
 
-                    if len(nuevos) > 0:
-                        paquete = ""
-                        for msg in nuevos:
-                            paquete += msg + "#"
-                        conn.send(paquete.encode())
+                                # Semáforo para lectura segura
+                                if sem_lista_mensajes.acquire(timeout=2):
+                                    try:
+                                        f = open("indice_chats.txt", "r")
+                                        todas_lineas = f.readlines()
+                                        f.close()
+
+                                        j = 0
+                                        while j < len(todas_lineas):
+                                            linea = todas_lineas[j]
+                                            if usuario_logueado in linea:
+                                                nombre_limpio = linea.strip().replace(".txt", "")
+                                                lista_chats_encontrados.append(nombre_limpio)
+                                            j = j + 1
+                                    except FileNotFoundError:
+                                        lista_chats_encontrados = []  # Sin pass
+                                    except Exception:
+                                        lista_chats_encontrados = []  # Sin pass
+
+                                    sem_lista_mensajes.release()
+                                else:
+                                    lista_chats_encontrados = []
+
+                                cantidad = len(lista_chats_encontrados)
+                                ts_ahora = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+
+                                # PROTOCOLO[cite: 110]: Enviar primero cantidad
+                                cabecera = f"{origen};@;{ts_ahora};LIST;{ts_ahora};\"{cantidad}\""
+                                conn.send(cabecera.encode())
+
+                                # Esperar OK
+                                confirmacion = conn.recv(1024).decode()
+                                if confirmacion.strip() == "OK":
+                                    k = 0
+                                    while k < cantidad:
+                                        chat_info = lista_chats_encontrados[k]
+                                        # PDF[cite: 110]: Formato LIST con timestamp 0
+                                        msg_chat = f"{origen};{chat_info};00000000000000;LIST;00000000000000;\"0\""
+                                        conn.send(msg_chat.encode())
+
+                                        # Esperar OK tras cada item
+                                        conn.recv(1024)
+                                        k = k + 1
+
+                            # OTROS
+                            else:
+                                conn.send("KO".encode())
+                        else:
+                            if mensaje_raw == "!DESCONECTAR":
+                                conectado = False
+                            else:
+                                conn.send("KO".encode())
                     else:
-                        conn.send("VACIO".encode())
-                else:
-                    conn.send("ERROR FORMATO".encode())
-
-            # SALIR
-            elif mensaje == "!DESCONECTAR":
-                conectado = False
-
-            elif not usuario_logueado:
-                conn.send("ERROR: LOGIN PRIMERO".encode())
-
+                        conn.send("ERROR: LOGIN PRIMERO".encode())
             else:
-                conn.send("KO".encode())
+                # Si len(datos) == 0, el cliente cerró
+                conectado = False
 
     except Exception as e:
         print(f"[ERROR HILO 999] {e}")
-    finally:
-        conn.close()
-
+    conn.close()
 
 def puerto_999():
     servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -363,7 +403,6 @@ def puerto_999():
             print(f"[ERROR SERVER 999] {e}")
 
 
-# --- 4. ARRANQUE (LINEAL Y SIMPLE) ---
 
 print("--- INICIANDO SERVIDORES WHATSAPP ---")
 

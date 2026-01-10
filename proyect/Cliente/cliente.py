@@ -4,26 +4,58 @@ import time
 from datetime import datetime
 
 # --- CONFIGURACIÓN ---
-SERVER_IP = "127.0.0.1"
-PUERTO_ENVIOS = 666
-PUERTO_RECEPCION = 999
+ip_servidor = "127.0.0.1"
+puerto_envios = 666
+puerto_recepcion = 999
 
-# Variables Globales
-MI_USUARIO = ""
-MI_PASSWORD = ""
-CONECTADO = False
+# Variables de Estado
+mi_usuario = ""
+mi_password = ""
+conectado = False
 
 
-# --- 1. FUNCIONES LOCALES ---
+# --- 1. FUNCIONES AUXILIARES ---
 
 def obtener_timestamp():
-    """Genera fecha/hora para el protocolo."""
-    now = datetime.now()
-    return now.strftime("%Y%m%d%H%M%S")
+    """Genera fecha/hora formato YYYYMMDDhhmmss."""
+    ahora = datetime.now()
+    return ahora.strftime("%Y%m%d%H%M%S")
+
+
+def registrar_contacto_local(amigo):
+    """
+    Actualiza mis_contactos.txt sin usar glob ni os.
+    """
+    ya_existe = False
+    try:
+        archivo = open("mis_contactos.txt", "r")
+        contactos = archivo.readlines()
+        archivo.close()
+
+        i = 0
+        while i < len(contactos) and not ya_existe:
+            if contactos[i].strip() == amigo:
+                ya_existe = True
+            i = i + 1
+
+    except FileNotFoundError:
+        ya_existe = False
+    except Exception:
+        # Truco para no usar pass: Asignación inútil
+        a = 0
+
+        # Si no está, escribimos
+    if not ya_existe:
+        try:
+            archivo_add = open("mis_contactos.txt", "a")
+            archivo_add.write(amigo + "\n")
+            archivo_add.close()
+        except Exception:
+            a = 0  # No hacemos nada
 
 
 def guardar_localmente(mensaje_formateado):
-    """Guarda en fichero sin usar OS ni pass."""
+    """Guarda en historial y actualiza lista de contactos."""
     exito = False
     try:
         partes = mensaje_formateado.split(";")
@@ -31,36 +63,36 @@ def guardar_localmente(mensaje_formateado):
             origen = partes[0].replace("@", "")
             destino = partes[1].replace("@", "")
 
-            # Determinar el nombre del otro usuario
-            if origen == MI_USUARIO:
+            if origen == mi_usuario:
                 otro = destino
             else:
                 otro = origen
 
-            nombre_archivo = f"{MI_USUARIO}_{otro}.txt"
-
-            # Escribir en modo append
+            nombre_archivo = f"Historiales/{mi_usuario}_{otro}.txt"
             archivo = open(nombre_archivo, "a")
             archivo.write(mensaje_formateado + "\n")
             archivo.close()
+
+            # 2. Registrar contacto
+            registrar_contacto_local(otro)
+
             exito = True
     except Exception as e:
-        print(f"[ERROR LOCAL] {e}")
+        print(f"[ERROR DISCO] {e}")
 
     return exito
 
 
 def obtener_ultimo_timestamp_local(amigo):
-    """Busca el timestamp más alto sin usar break."""
+    """Obtiene el último timestamp del archivo local."""
     ts_max = "00000000000000"
-    nombre_archivo = f"{MI_USUARIO}_{amigo}.txt"
+    nombre_archivo = f"{mi_usuario}_{amigo}.txt"
 
     try:
         archivo = open(nombre_archivo, "r")
         lineas = archivo.readlines()
         archivo.close()
 
-        # Recorremos todas las líneas con un while para no usar break
         i = 0
         while i < len(lineas):
             linea = lineas[i]
@@ -72,7 +104,6 @@ def obtener_ultimo_timestamp_local(amigo):
             i = i + 1
 
     except FileNotFoundError:
-        # No usamos pass, simplemente asignamos un valor dummy o imprimimos
         ts_max = "00000000000000"
     except Exception:
         ts_max = "00000000000000"
@@ -80,157 +111,259 @@ def obtener_ultimo_timestamp_local(amigo):
     return ts_max
 
 
-# --- 2. FUNCIONES DE RED ---
+def mostrar_lista_contactos():
+    """Muestra los contactos leyendo el archivo índice."""
+    print("\n --- LISTA DE CONVERSACIONES ---")
+    try:
+        archivo = open("mis_contactos.txt", "r")
+        lineas = archivo.readlines()
+        archivo.close()
+
+        if len(lineas) == 0:
+            print(" (No tienes conversaciones iniciadas)")
+        else:
+            i = 0
+            while i < len(lineas):
+                nombre = lineas[i].strip()
+                if len(nombre) > 0:
+                    print(f" {i + 1}- @{nombre}")
+                i = i + 1
+    except FileNotFoundError:
+        print(" (No tienes conversaciones iniciadas)")
+    except Exception:
+        print(" [Error leyendo contactos]")
+
+    print(" -------------------------------\n")
+
+
+# --- 2. FUNCIONES DE RED (PUERTO 666) ---
 
 def enviar_mensaje(destinatario, texto):
-    """Envía mensaje al 666."""
+    """Envía mensaje al servidor."""
     ts = obtener_timestamp()
-    mensaje_final = f"{MI_USUARIO};{destinatario};{ts};ENVIADO;{ts};{texto}"
+    mensaje_final = f"{mi_usuario};{destinatario};{ts};ENVIADO;{ts};{texto}"
 
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect((SERVER_IP, PUERTO_ENVIOS))
+        cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        cliente.connect((ip_servidor, puerto_envios))
 
-        s.send(mensaje_final.encode())
-        respuesta = s.recv(1024).decode()
-        s.close()
+        cliente.send(mensaje_final.encode())
+        respuesta = cliente.recv(1024).decode()
+        cliente.close()
 
         if respuesta == "OK":
             guardar_localmente(mensaje_final)
-            print(f"[OK] Enviado a {destinatario}")
+            print(f" [✓] Enviado")
         else:
-            print(f"[ERROR] Servidor rechazó el mensaje")
+            print(f" [X] Error: Servidor rechazó el mensaje.")
 
     except Exception as e:
-        print(f"[OFFLINE] Error de conexión: {e}")
+        print(f" [!] Error de conexión: {e}")
 
+
+# --- 3. HILO AUTOMÁTICO (PUERTO 999) ---
 
 def hilo_actualizador():
-    """Bucle en segundo plano. Controlado por variable booleana."""
-    while CONECTADO:
+    """
+    Gestiona LIST y UPDATE en segundo plano cada 5 segundos.
+    """
+    while conectado:
         try:
-            # Pausa para no saturar
-            time.sleep(5)
+            # Espera fragmentada para cerrar rápido si salimos
+            contador = 0
+            while contador < 50 and conectado:
+                time.sleep(0.1)
+                contador = contador + 1
 
-            # Conexión
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect((SERVER_IP, PUERTO_RECEPCION))
+            if conectado:
+                cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                cliente.connect((ip_servidor, puerto_recepcion))
 
-            # Login
-            s.send(f"LOGIN;{MI_USUARIO};{MI_PASSWORD}".encode())
-            resp_login = s.recv(1024).decode()
+                # Login
+                cliente.send(f"LOGIN:{mi_usuario}:{mi_password}".encode())
+                resp_login = cliente.recv(1024).decode()
 
-            if resp_login == "OK":
-                # Pedir LISTA
-                s.send("LIST".encode())
-                lista_raw = s.recv(4096).decode()
+                if resp_login == "OK":
 
-                if lista_raw != "VACIO":
-                    lista_archivos = lista_raw.split("#")
+                    # --- A. COMANDO LIST ---
+                    ts = obtener_timestamp()
+                    cmd_list = f"{mi_usuario};@;{ts};LIST;{ts};\"\""
+                    cliente.send(cmd_list.encode())
 
-                    # Iteramos la lista de chats
-                    i = 0
-                    while i < len(lista_archivos):
-                        archivo = lista_archivos[i]
+                    # 1. Cabecera Cantidad
+                    cabecera_list = cliente.recv(1024).decode()
+                    partes_cab = cabecera_list.split(";")
 
-                        # Solo procesamos si tiene contenido (evitamos continue)
-                        if len(archivo) > 0:
-                            amigo = archivo.replace(".txt", "").replace(MI_USUARIO, "").replace("_", "")
+                    if len(partes_cab) >= 6:
+                        cant_str = partes_cab[5].replace('"', '')
+                        if cant_str.isdigit():
+                            cantidad_chats = int(cant_str)
+                        else:
+                            cantidad_chats = 0
+
+                        # 2. Confirmar Cantidad
+                        cliente.send("OK".encode())
+
+                        chats_para_actualizar = []
+
+                        # 3. Recibir Items
+                        k = 0
+                        while k < cantidad_chats:
+                            msg_chat = cliente.recv(1024).decode()
+                            cliente.send("OK".encode())
+
+                            p_chat = msg_chat.split(";")
+                            if len(p_chat) >= 6:
+                                # Limpiar nombre "Yo_Otro" -> "Otro"
+                                nombre_archivo_chat = p_chat[1]
+                                amigo_limpio = nombre_archivo_chat.replace(mi_usuario, "").replace("_", "")
+
+                                if len(amigo_limpio) > 0:
+                                    chats_para_actualizar.append(amigo_limpio)
+                            k = k + 1
+
+                        # --- B. COMANDO UPDATE ---
+                        m = 0
+                        while m < len(chats_para_actualizar):
+                            amigo = chats_para_actualizar[m]
 
                             if len(amigo) > 0:
-                                # Pedir UPDATE
                                 ts_ultimo = obtener_ultimo_timestamp_local(amigo)
-                                s.send(f"UPDATE;{amigo};{ts_ultimo}".encode())
 
-                                datos_nuevos = s.recv(4096).decode()
+                                cmd_upd = f"{mi_usuario};{amigo};{ts};UPDATE;{ts};\"{ts_ultimo}\""
+                                cliente.send(cmd_upd.encode())
 
-                                if datos_nuevos != "VACIO" and datos_nuevos != "ERROR FORMATO":
-                                    mensajes = datos_nuevos.split("#")
+                                # 1. Cabecera Cantidad
+                                cabecera_upd = cliente.recv(1024).decode()
+                                p_cab_upd = cabecera_upd.split(";")
 
-                                    # Procesar mensajes recibidos
-                                    j = 0
-                                    while j < len(mensajes):
-                                        m = mensajes[j]
-                                        if len(m) > 5:
-                                            guardar_localmente(m)
-                                            p = m.split(";")
-                                            if len(p) >= 6:
-                                                print(f"\n[NUEVO] @{p[0]}: {p[5]}")
-                                                print(">> ", end="")
-                                        j = j + 1
+                                if len(p_cab_upd) >= 6:
+                                    cant_msg_str = p_cab_upd[5].replace('"', '')
+                                    if cant_msg_str.isdigit():
+                                        cant_msgs = int(cant_msg_str)
+                                    else:
+                                        cant_msgs = 0
 
-                        # Avanzamos índice
-                        i = i + 1
+                                    # 2. Confirmar Cantidad
+                                    cliente.send("OK".encode())
 
-            s.close()
+                                    # 3. Recibir Mensajes
+                                    n = 0
+                                    while n < cant_msgs:
+                                        msg_nuevo = cliente.recv(1024).decode()
+                                        cliente.send("OK".encode())
 
-        except Exception as e:
-            # En lugar de pass, imprimimos error (opcional)
-            # print(f"Error background: {e}")
-            error_detectado = True
+                                        if len(msg_nuevo) > 0:
+                                            guardar_localmente(msg_nuevo)
 
-        # --- 3. EJECUCIÓN PRINCIPAL ---
+                                            pm = msg_nuevo.split(";")
+                                            if len(pm) >= 6:
+                                                estado = pm[3]
+                                                remitente = pm[0]
+                                                texto = pm[5]
+
+                                                # Mostrar solo si es RECIBIDO y no soy yo
+                                                if estado == "RECIBIDO" and remitente != mi_usuario:
+                                                    print(f"\n\n [NUEVO] @{remitente}: {texto}")
+                                                    print(" >> ", end="")
+                                        n = n + 1
+                            m = m + 1
+
+                cliente.close()
+
+        except Exception:
+            # Aquí usamos el truco. "a = 0" no hace nada pero evita el error de bloque vacío.
+            a = 0
 
 
-print("--- CLIENTE WHATSAPP ---")
+# --- 4. EJECUCIÓN PRINCIPAL ---
 
-MI_USUARIO = input("Usuario: ")
-MI_PASSWORD = input("Contraseña: ")
+print("\n=======================================")
+print("      TERMINAL WHATSAPP - CLIENTE      ")
+print("=======================================\n")
+
+mi_usuario = input(" Introduce tu Usuario: ")
+mi_password = input(" Introduce tu Contraseña: ")
 
 login_exitoso = False
 
-# Intentamos login inicial
+print("\n Conectando con el servidor...")
+
+# Login inicial
 try:
     sock_test = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock_test.connect((SERVER_IP, PUERTO_RECEPCION))
-    sock_test.send(f"LOGIN;{MI_USUARIO};{MI_PASSWORD}".encode())
+    sock_test.connect((ip_servidor, puerto_recepcion))
+    sock_test.send(f"LOGIN:{mi_usuario}:{mi_password}".encode())
     resp = sock_test.recv(1024).decode()
     sock_test.close()
 
     if resp == "OK":
         login_exitoso = True
 except Exception as e:
-    print(f"Error conectando al servidor: {e}")
+    print(f" [ERROR] No se pudo conectar: {e}")
     login_exitoso = False
 
 if login_exitoso:
-    print(f"Bienvenido {MI_USUARIO}.")
-    CONECTADO = True
+    print(f" [OK] ¡Bienvenido/a {mi_usuario}!")
+    print(" ---------------------------------------")
+    print("  1. Escribir:    @Amigo: Hola")
+    print("  2. Ver chats:   @lista")
+    print("  3. Salir:       @salir")
+    print(" ---------------------------------------")
 
-    # Arrancar hilo
+    conectado = True
+
+    # Hilo Background
     hilo = threading.Thread(target=hilo_actualizador)
     hilo.start()
 
-    print("Escribe '@Usuario: Mensaje' o 'SALIR'")
-
-    # Bucle Principal controlado por bandera
-    while CONECTADO:
+    # Bucle Principal
+    while conectado:
         try:
-            texto = input(">> ")
+            texto = input(" >> ")
 
-            if texto == "SALIR":
-                CONECTADO = False
-                print("Cerrando...")
-            else:
-                if texto.startswith("@") and ":" in texto:
+            if len(texto) > 0:
+                if texto == "@salir":
+                    print(" Cerrando sesión...")
+                    try:
+                        s_salida = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        s_salida.connect((ip_servidor, puerto_envios))
+                        s_salida.send("!DESCONECTAR".encode())
+                        s_salida.close()
+                    except Exception:
+                        a = 0  #Lo he puesto para que no haga nada
+                    conectado = False
+
+                # --- COMANDO LISTA ---
+                elif texto == "@lista":
+                    mostrar_lista_contactos()
+
+                # --- ENVIAR MENSAJE ---
+                # Comprobamos índice 0 y existencia de dos puntos
+                elif texto[0] == "@" and ":" in texto:
+
                     partes = texto.split(":", 1)
-                    destinatario = partes[0].replace("@", "").strip()
+
+                    # Quitamos la '@' del inicio
+                    destinatario_sucio = partes[0]
+                    destinatario = destinatario_sucio[1:].strip()
+
                     contenido = partes[1].strip()
-                    enviar_mensaje(destinatario, contenido)
+
+                    if len(destinatario) > 0 and len(contenido) > 0:
+                        enviar_mensaje(destinatario, contenido)
+                    else:
+                        print(" [!] Mensaje vacío.")
+
                 else:
-                    print("Formato incorrecto.")
+                    if conectado:
+                        print(" [!] Formato incorrecto.")
 
         except Exception:
-            print("Error en entrada de datos.")
-            CONECTADO = False
+            conectado = False
+
+    time.sleep(1)
+    print("\n [FIN] Programa cerrado.")
 
 else:
-    print("Login fallido o servidor apagado.")
-
-# Espera final para cerrar limpio sin usar join a lo bruto
-if login_exitoso:
-    try:
-        # Esperamos un poco a que el hilo lea la variable CONECTADO = False
-        time.sleep(2)
-    except Exception:
-        error_cierre = True
+    print(" [X] Login incorrecto o servidor apagado.")
