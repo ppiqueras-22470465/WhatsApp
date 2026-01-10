@@ -1,0 +1,4 @@
+Pablo;@Alvaro;20260110145606;ENVIADO;20260110145606;"no lo habia cerrado"
+Pablo;@Alvaro;20260110145610;ENVIADO;20260110145610;"he cerrado el servidor, probando el almacenamiento local"
+Pablo;@Alvaro;20260110145612;ENVIADO;20260110145612;"he cerrado el servidor, probando el almacenamiento local"
+Pablo;@Alvaro;20260110145616;ENVIADO;20260110145616;"he cerrado el servidor, probando el almacenamiento local"

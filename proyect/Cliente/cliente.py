@@ -3,10 +3,12 @@ import threading
 import time
 from datetime import datetime
 import os
+import glob
 
 # Configuración
 SERVER_IP = "127.0.0.1"
-MI_USUARIO = "" 
+MI_USUARIO = ""
+MI_PASSWORD = ""
 
 # --- FUNCIONES AUXILIARES ---
 
@@ -25,10 +27,10 @@ def guardar_localmente(mensaje_formateado, es_temporal=False):
     Guarda el mensaje en el archivo correcto: MI_USUARIO_OTROUSUARIO.txt
     (Asume que la carpeta 'Historiales' ya existe)
     """
-    try:
-        # 1. Separar el mensaje para saber quién es el "OTRO"
-    Guarda el mensaje en el archivo correcto: MIUSUARIO_OTROUSUARIO.txt
-    """
+    # try:
+    #     # 1. Separar el mensaje para saber quién es el "OTRO"
+    # Guarda el mensaje en el archivo correcto: MIUSUARIO_OTROUSUARIO.txt
+
     try:
         # 1. Separamos el mensaje para saber quién es el "OTRO"
         partes = mensaje_formateado.split(";")
@@ -86,30 +88,31 @@ def guardar_localmente(mensaje_formateado, es_temporal=False):
 # --- FUNCIONES DE RED ---
 
 def enviar_al_666(mensaje_formateado):
-    """Envía mensaje al puerto de envíos [cite: 14]"""
+    """Envía mensaje al puerto de envíos o guarda en local si falla."""
+    enviado = False
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(10) # Importante el timeout [cite: 116]
+        s.settimeout(10)
         s.connect((SERVER_IP, 666))
         s.send(mensaje_formateado.encode())
-        
+
         resp = s.recv(1024).decode()
-        
+
         if resp == "OK":
-            # TODO 9: Éxito.
-            # - Cambiar estado a ENVIADO o RECIBIDO en el string?
-            # - Llamar a guardar_localmente(mensaje_formateado, es_temporal=False).
-            pass
+            # Si el servidor dice OK, guardamos como enviado normal
+            guardar_localmente(mensaje_formateado, False)
+            enviado = True
         else:
-            print("Error en el envío")
-            
+            print("Error: El servidor respondió KO")
+
         s.close()
-        
+
     except Exception as e:
-        # TODO 10: Gestión de OFFLINE.
-        # - Si entra aquí, el servidor está caído.
-        # - Llamar a guardar_localmente(mensaje_formateado, es_temporal=True).
-        print(f"Servidor no disponible. Guardando en _tmp. Error: {e}")
+        print(f"Fallo al conectar. Guardando en modo Offline. Error: {e}")
+
+    # Si no se pudo enviar (por excepción o por KO), guardamos en temporal
+    if not enviado:
+        guardar_localmente(mensaje_formateado, True)
 
 def obtener_ultimo_timestamp_local(usuario_contacto):
     try:
@@ -133,151 +136,207 @@ def obtener_ultimo_timestamp_local(usuario_contacto):
     except Exception:
         return "00000000000000" # Si el archivo no existe o algo falla, devolvemos timestamp cero
 
+
 def procesar_mensajes_offline():
-    ###### FUNCION POR TERMINAR
-    """
-    [cite_start]Busca archivos _tmp, intenta enviarlos y si tiene éxito, los borra. [cite: 58]
-    """
-    if not os.path.exists("Historiales"):
-        return
+    """Revisa archivos _tmp y trata de reenviarlos."""
+    if os.path.exists("Historiales"):
+        # Buscar archivos temporales manualmente
+        patron = os.path.join("Historiales", "*_tmp.txt")
+        lista_archivos = glob.glob(patron)
 
-    # Buscar archivos temporales
-    patron = os.path.join("Historiales", "*_tmp.txt")
-    lista_archivos = glob.glob(patron)
+        i = 0
+        while i < len(lista_archivos):
+            ruta_archivo = lista_archivos[i]
 
-    if lista_archivos:
-        print(f"--- Procesando {len(lista_archivos)} archivos pendientes ---")
+            # Leer las líneas del archivo temporal
+            try:
+                f = open(ruta_archivo, "r")
+                lineas = f.readlines()
+                f.close()
 
-    for ruta_archivo in lista_archivos:
-        enviados_ok = True
-        lineas_pendientes = []
+                archivo_procesado_correctamente = True
+                j = 0
 
-        try:
-            # Leer contenido
-            with open(ruta_archivo, "r") as f:
-                lineas_pendientes = f.readlines()
+                # Intentar enviar línea por línea
+                while j < len(lineas) and archivo_procesado_correctamente:
+                    linea = lineas[j].strip()
+                    if len(linea) > 0:
+                        try:
+                            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                            s.settimeout(5)
+                            s.connect((SERVER_IP, 666))
+                            s.send(linea.encode())
+                            resp = s.recv(1024).decode()
+                            s.close()
 
-            # Intentar reenviar uno a uno
-            for linea in lineas_pendientes:
-                linea = linea.strip()
-                if not linea: continue
+                            if resp == "OK":
+                                # Si se envió bien, guardar en el historial limpio
+                                guardar_localmente(linea, False)
+                                print(f"Mensaje recuperado y enviado: {linea}")
+                            else:
+                                # Si falla uno, paramos este archivo para no perder orden
+                                archivo_procesado_correctamente = False
+                        except:
+                            archivo_procesado_correctamente = False
+                    j = j + 1
 
-                try:
-                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    s.settimeout(5)
-                    s.connect((SERVER_IP, 666))
-                    s.send(linea.encode())
-                    resp = s.recv(1024).decode()
-                    s.close()
+                # Si todas las líneas se enviaron bien, borramos el temporal
+                if archivo_procesado_correctamente:
+                    os.remove(ruta_archivo)
+                    print(f"Archivo temporal procesado y borrado: {ruta_archivo}")
 
-                    if resp == "OK":
-                        print("Recuperado y enviado mensaje pendiente.")
-                        guardar_localmente(linea, es_temporal=False)
-                    else:
-                        enviados_ok = False
-                except:
-                    enviados_ok = False
+            except Exception as e:
+                print(f"Error leyendo archivo temporal {ruta_archivo}: {e}")
 
-            # Si todo salió bien, borramos el temporal
-            if enviados_ok:
-                os.remove(ruta_archivo)
-
-        except Exception as e:
-            print(f"Error procesando offline: {e}")
+            i = i + 1
 
 
 def gestionar_comando_lista():
-    """Implementa el comando @lista [cite: 38]"""
+    """Implementa el comando @lista con LOGIN previo."""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(10)
         s.connect((SERVER_IP, 999))
 
-        # [cite_start]Formato LIST: @Yo;@;Time;LIST;000;"" [cite: 120]
-        msg = f"@{MI_USUARIO};@;{obtener_timestamp()};LIST;00000000000000;\"\""
-        s.send(msg.encode())
+        # 1. HACER LOGIN
+        cadena_login = f"LOGIN:{MI_USUARIO}:{MI_PASSWORD}"
+        s.send(cadena_login.encode())
+        resp_login = s.recv(1024).decode()
 
-        # Recibir cabecera con cantidad
-        cabecera = s.recv(1024).decode()
-        # Parsear cantidad (está en el último campo entre comillas)
-        # Ejemplo: ...;LIST;...;"5"
-        partes = cabecera.split(";")
-        cantidad_str = partes[5].replace('"', '')
-        cantidad = int(cantidad_str)
+        if resp_login == "OK":
+            # 2. ENVIAR PETICIÓN LIST
+            msg = f"@{MI_USUARIO};@;{obtener_timestamp()};LIST;00000000000000;\"\""
+            s.send(msg.encode())
 
-        s.send("OK".encode())  # Confirmamos cabecera
+            # 3. Recibir respuesta
+            cabecera = s.recv(1024).decode()
+            partes = cabecera.split(";")
 
-        print(f"\n--- LISTA DE CONVERSACIONES ({cantidad}) ---")
-        for i in range(cantidad):
-            datos_chat = s.recv(1024).decode()
-            # Parsear para mostrar bonito
-            # Formato recibido: Origen;Destino;...;LIST;...;"Pendientes"
-            p = datos_chat.split(";")
-            usuario_remoto = p[1].replace("@", "")  # El destino en la lista es el otro
-            pendientes = p[5].replace('"', '')
+            if len(partes) >= 6:
+                cantidad_str = partes[5].replace('"', '')
+                cantidad = int(cantidad_str)
 
-            print(f"{i + 1}. @{usuario_remoto} ({pendientes} mensajes nuevos)")
+                s.send("OK".encode())  # Confirmamos cabecera
 
-            s.send("OK".encode())
+                print(f"\n--- LISTA DE CONVERSACIONES ({cantidad}) ---")
+                i = 0
+                while i < cantidad:
+                    datos_chat = s.recv(1024).decode()
+                    p = datos_chat.split(";")
+                    if len(p) >= 6:
+                        usuario_remoto = p[0].replace("@", "")  # En LIST server manda Otro;Yo...
+                        pendientes = p[5].replace('"', '')
+                        print(f"{i + 1}. @{usuario_remoto} ({pendientes} mensajes nuevos)")
+                    s.send("OK".encode())
+                    i = i + 1
+            else:
+                print("Error formato lista servidor")
+        else:
+            print("Error: No se pudo verificar identidad para la lista.")
 
         s.close()
     except Exception as e:
         print(f"Error al pedir lista: {e}")
 
+
+# EN cliente.py
+
 def hilo_recepcion_actualizaciones():
-    """
-    Segundo hilo: Pregunta cada X seg si hay mensajes nuevos (Puerto 999) 
-    """
+    """Consulta periódicamente mensajes nuevos manteniendo la conexión abierta."""
+    # Bucle principal para reconexiones
     while True:
-        time.sleep(5) 
-        
         if MI_USUARIO != "":
             try:
-                # TODO 11: Implementar lógica completa UPDATE [cite: 95-98].
-                # 1. Leer de mis archivos locales cuál es el último timestamp que tengo.
-                # 2. Formatear mensaje UPDATE con ese timestamp.
-                
+                # 1. Conexión y Login (SE HACE SOLO UNA VEZ)
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(10)
                 s.connect((SERVER_IP, 999))
-                
-                msg_update = formatear_mensaje(MI_USUARIO, "@", "UPDATE", "") # Ajustar params
-                s.send(msg_update.encode())
-                
-                # 3. Recibir primer mensaje con la CANTIDAD (n).
-                cabecera = s.recv(1024).decode()
-                # Parsear cabecera para sacar 'n'.
-                s.send("OK".encode()) # Confirmar cabecera.
-                
-                # 4. Bucle for i in range(n):
-                #    - msg = s.recv(1024).decode()
-                #    - guardar_localmente(msg)
-                #    - print(msg) # Actualizar pantalla si procede.
-                #    - s.send("OK".encode())
-                
+
+                cadena_login = f"LOGIN:{MI_USUARIO}:{MI_PASSWORD}"
+                s.send(cadena_login.encode())
+                resp_login = s.recv(1024).decode()
+
+                if resp_login == "OK":
+                    conectado = True
+                    # 2. Bucle interno: Pedir actualizaciones constantemente sin desconectarse
+                    while conectado:
+                        try:
+                            # Pedir mensajes (Timestamp 0 para traer todo lo pendiente)
+                            ts_ultimo = "00000000000000"
+                            msg_update = f"{MI_USUARIO};@;{ts_ultimo};UPDATE;{ts_ultimo};\"\""
+                            s.send(msg_update.encode())
+
+                            # Recibir cabecera
+                            cabecera = s.recv(1024).decode()
+
+                            if cabecera == "":
+                                conectado = False  # Servidor cerró
+                            else:
+                                partes = cabecera.split(";")
+                                if len(partes) >= 6:
+                                    cantidad_str = partes[5].replace('"', '')
+                                    try:
+                                        cantidad = int(cantidad_str)
+                                    except:
+                                        cantidad = 0
+
+                                    s.send("OK".encode())
+
+                                    # Recibir los mensajes individuales
+                                    k = 0
+                                    while k < cantidad:
+                                        msg_recibido = s.recv(1024).decode()
+                                        if msg_recibido:
+                                            guardar_localmente(msg_recibido, False)
+                                            p_msg = msg_recibido.split(";")
+                                            if len(p_msg) >= 6:
+                                                remitente = p_msg[0]
+                                                # El mensaje es el campo 5, quitamos las comillas
+                                                texto_msg = p_msg[5].replace('"', '')
+                                                print(f"\n[NUEVO MENSAJE] @{remitente}: {texto_msg}")
+                                            else:
+                                                # Si el formato es raro, lo imprimimos tal cual
+                                                print(f"\n[RAW] {msg_recibido}")
+                                else:
+                                    conectado = False  # Cabecera corrupta
+
+                            # Esperamos solo 1 segundo (MENOS LATENCIA) y seguimos conectados
+                            time.sleep(0.5)
+
+                        except Exception as e:
+                            print(f"Error en la conexión, reconectando... {e}")
+                            conectado = False
+
                 s.close()
-            except Exception:
-                pass # Si falla actualización silenciosa, no pasa nada
+
+            except Exception as e:
+                # Si falla conectar al principio, esperamos un poco antes de reintentar
+                print(f"Error al conectar al servidor: {e}")
+
+        # Espera de seguridad antes de intentar reconectar si todo falló
+        time.sleep(2)
 
 def sistema_login():
-    """Gestiona el inicio de sesión [cite: 8, 9]"""
-    global MI_USUARIO
+    """Gestiona el inicio de sesión """
+    global MI_USUARIO, MI_PASSWORD
     print("--- INICIO DE SESIÓN ---")
     user = input("Usuario: ")
     password = input("Contraseña: ")
-    
+
     cadena_login = f"LOGIN:{user}:{password}"
 
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect((SERVER_IP, 999)) 
+        s.connect((SERVER_IP, 999))
         s.send(cadena_login.encode())
-        
+
         respuesta = s.recv(1024).decode()
         s.close()
-        
+
         if respuesta == "OK":
             print("Login Correcto.")
             MI_USUARIO = user
+            MI_PASSWORD = password  # <--- GUARDAR LA CONTRASEÑA
             return True
         else:
             print("Login Incorrecto.")
@@ -286,38 +345,37 @@ def sistema_login():
         print("No se pudo conectar al servidor para Login.")
         return False
 
+
 # --- ARRANQUE ---
 if sistema_login():
-    # TODO 13: Revisar si hay mensajes pendientes en archivos _tmp[cite: 58].
-    # - Antes de empezar, buscar archivos que acaben en _tmp.
-    # - Leerlos y llamar a enviar_al_666() para cada línea.
-    # - Borrar el archivo _tmp al terminar.
+    # Procesar mensajes que se quedaron colgados si se cayó la red antes
+    procesar_mensajes_offline()
 
+    # Lanzamos el hilo de recepción
     t = threading.Thread(target=hilo_recepcion_actualizaciones)
+    t.daemon = True  # IMPORTANTE: Esto hace que el hilo muera al cerrar el programa principal
     t.start()
-    
+
     print(f"Bienvenido {MI_USUARIO}. Escribe '@Usuario: mensaje' para chatear.")
-    
-    seguir_ejecutando = True 
+
+    seguir_ejecutando = True
 
     while seguir_ejecutando:
-        texto = input() 
-        
-        if texto == "@salir":
-            # TODO 14: Enviar mensaje de fin al servidor si es necesario?
-            seguir_ejecutando = False 
-            
-        elif texto.startswith("@lista"):
-             # TODO 15: Implementar comando LIST[cite: 38].
-             # - Enviar mensaje tipo LIST al puerto 999.
-             # - Recibir y mostrar la lista de usuarios/mensajes.
-             pass
+        texto = input()
+
+        if texto.strip() == "@salir":
+            print("Cerrando sesión y saliendo...")
+            seguir_ejecutando = False
+            # Al ser t.daemon = True, el hilo se cerrará solo al salir de este bucle.
+
+        elif texto.lower().startswith("@lista"):
+            gestionar_comando_lista()
 
         elif texto.startswith("@") and ":" in texto:
-            partes = texto.split(":", 1) 
-            destinatario = partes[0] 
-            contenido = partes[1].strip() 
-            
+            partes = texto.split(":", 1)
+            destinatario = partes[0]
+            contenido = partes[1].strip()
+
             msg_final = formatear_mensaje(MI_USUARIO, destinatario, "ENVIADO", contenido)
             enviar_al_666(msg_final)
         else:
