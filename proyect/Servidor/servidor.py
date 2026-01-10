@@ -114,7 +114,7 @@ def puerto_666():
     servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     servidor.bind((ip_servidor, port_666))
     servidor.listen()
-    print("Servidor [666]: Listo.")
+    print("Servidor [666]: Listo para recibir mensajes.")
 
     conexion_servidor = True
 
@@ -129,6 +129,8 @@ def puerto_666():
                     partes = mensaje.split(";")
 
                     if mensaje == "!DESCONECTAR":
+                        print(f"[666] Apagando")
+                        conn.send(f"[666] Apagando".encode())
                         conexion_servidor = False
 
                     elif len(partes) >= 6:
@@ -136,8 +138,6 @@ def puerto_666():
 
                         # --- CASO A: Confirmación de LECTURA (LEIDO) ---
                         if estado == "LEIDO":
-                            # El cliente nos avisa que leyó el chat con X
-                            # Tenemos que buscar el archivo y actualizar TODO lo que estaba ENTREGADO a LEIDO
                             emisor = partes[0].replace("@", "")  # Quien lee (Yo)
                             receptor = partes[1].replace("@", "")  # De quien leemos (El otro)
 
@@ -155,13 +155,17 @@ def puerto_666():
                                     while i < len(lines):
                                         m = lines[i].strip()
                                         p = m.split(";")
-                                        # Si el mensaje es PARA MÍ (Yo soy destino) y estaba ENTREGADO -> LEIDO
-                                        if len(p) >= 6 and p[1].replace("@", "") == emisor and p[3] == "ENTREGADO":
-                                            ts_now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-                                            # Actualizamos estado y timestamp de estado
-                                            nuevo_m = f"{p[0]};{p[1]};{p[2]};LEIDO;{ts_now};{p[5]}"
-                                            new_lines.append(nuevo_m)
-                                            cambio = True
+
+                                        # CORRECCIÓN CLAVE AQUÍ:
+                                        # Marcamos LEIDO si está ENTREGADO **O SI SIGUE RECIBIDO**
+                                        if len(p) >= 6 and p[1].replace("@", "") == emisor:
+                                            if p[3] == "ENTREGADO" or p[3] == "RECIBIDO":
+                                                ts_now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+                                                nuevo_m = f"{p[0]};{p[1]};{p[2]};LEIDO;{ts_now};{p[5]}"
+                                                new_lines.append(nuevo_m)
+                                                cambio = True
+                                            else:
+                                                new_lines.append(m)
                                         else:
                                             new_lines.append(m)
                                         i = i + 1
@@ -179,7 +183,6 @@ def puerto_666():
 
                         # --- CASO B: Mensaje Nuevo Normal ---
                         else:
-                            # (Lógica estándar de guardar mensaje nuevo)
                             emisor = partes[0]
                             receptor = partes[1]
                             ts_orig = partes[2]
@@ -197,12 +200,11 @@ def puerto_666():
                 print(f"[666 Error] {e}")
 
             conn.close()
-        except:
-            print("Error en el servidor 666")
-
+        except Exception as e:
+            print(f"[ERROR 666 loop] {e}")
 
 def gestionar_cliente_999(conn, addr):
-    """Atiende UPDATE incluyendo actualizaciones de estado para el remitente."""
+    """Atiende UPDATE y LIST (arreglado)."""
     print(f"[999] Atendiendo a {addr}")
     login_ok = False
     conexion_activa = True
@@ -225,7 +227,7 @@ def gestionar_cliente_999(conn, addr):
                 if len(partes) >= 5:
                     if partes[3] == "UPDATE":
                         es_update = True
-                        ts_solicitado = partes[4]  # El cliente nos dice qué es lo último que tiene
+                        ts_solicitado = partes[4]
                     elif partes[3] == "LIST":
                         es_list = True
 
@@ -267,20 +269,17 @@ def gestionar_cliente_999(conn, addr):
                                             origen = p[0].replace("@", "")
                                             destino = p[1].replace("@", "")
                                             estado = p[3]
-                                            ts_estado = p[4]  # Cuando cambió el estado
+                                            ts_estado = p[4]
 
-                                            # CRITERIO 1: Mensajes para mí que debo recibir (RECIBIDO -> ENTREGADO)
+                                            # CRITERIO 1: Recibir mensajes nuevos (RECIBIDO -> ENTREGADO)
                                             if destino == usuario_conectado and estado == "RECIBIDO":
                                                 mensajes_a_enviar.append(m)
-                                                # Cambio estado
                                                 now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
                                                 linea_final = f"{p[0]};{p[1]};{p[2]};ENTREGADO;{now};{p[5]}"
                                                 modificado = True
 
-                                            # CRITERIO 2: Mensajes QUE YO ENVIÉ y han cambiado de estado (ENTREGADO/LEIDO)
-                                            # Comparamos el TS del Estado con el TS que pide el cliente
+                                            # CRITERIO 2: Recibir actualizaciones de MIS mensajes (ENTREGADO/LEIDO)
                                             elif origen == usuario_conectado and ts_estado > ts_solicitado:
-                                                # Se lo mandamos para que actualice su local de ENVIADO a ENTREGADO/LEIDO
                                                 mensajes_a_enviar.append(m)
 
                                         nuevas_lineas.append(linea_final)
@@ -295,7 +294,7 @@ def gestionar_cliente_999(conn, addr):
                         except:
                             sem_lista_mensajes.release()
 
-                    # Enviar al cliente
+                    # Enviar UPDATE al cliente
                     cant = len(mensajes_a_enviar)
                     ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
                     cab = f"SERVER;{usuario_conectado};{ts};UPDATE;{ts};\"{cant}\""
@@ -309,10 +308,68 @@ def gestionar_cliente_999(conn, addr):
                             k = k + 1
 
                 elif es_list and login_ok:
-                    # (Mismo código de LIST que tenías antes...)
-                    # Para simplificar la respuesta, asumo que usas el bloque LIST previo
-                    conn.send(f"SERVER;{usuario_conectado};0;LIST;0;\"0\"".encode())  # Placeholder
-                    conn.recv(1024)
+                    # --- LÓGICA DE LISTA ARREGLADA ---
+                    chats_a_enviar = []
+                    if sem_lista_mensajes.acquire(timeout=5):
+                        try:
+                            import glob
+                            archivos = glob.glob("*_*.txt")
+                            procesados = []
+                            i = 0
+                            while i < len(archivos):
+                                nombre = archivos[i]
+                                if usuario_conectado in nombre:
+                                    # Sacar el nombre del OTRO usuario del nombre del archivo (A_B.txt)
+                                    partes_nom = nombre.replace(".txt", "").split("_")
+                                    otro = ""
+                                    if len(partes_nom) == 2:
+                                        if partes_nom[0] == usuario_conectado:
+                                            otro = partes_nom[1]
+                                        elif partes_nom[1] == usuario_conectado:
+                                            otro = partes_nom[0]
+
+                                    # Evitar duplicados si existen A_B y B_A (no debería, pero por seguridad)
+                                    ya_esta = False
+                                    for usr in procesados:
+                                        if usr == otro: ya_esta = True
+
+                                    if otro != "" and not ya_esta:
+                                        procesados.append(otro)
+                                        # Contar mensajes pendientes (RECIBIDO) para MÍ en este chat
+                                        pendientes = 0
+                                        try:
+                                            f = open(nombre, "r")
+                                            lineas = f.readlines()
+                                            f.close()
+                                            for l in lineas:
+                                                cp = l.split(";")
+                                                if len(cp) >= 6:
+                                                    # Si soy destino y está RECIBIDO -> Pendiente
+                                                    if cp[1].replace("@", "") == usuario_conectado and cp[
+                                                        3] == "RECIBIDO":
+                                                        pendientes += 1
+                                        except:
+                                            print(f"[ERROR LISTA] No se pudo abrir {nombre}")
+
+                                        ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+                                        # Formato item lista: Otro;Yo;000;LIST;000;"Pendientes"
+                                        item = f"{otro};{usuario_conectado};00000000000000;LIST;00000000000000;\"{pendientes}\""
+                                        chats_a_enviar.append(item)
+                                i = i + 1
+                            sem_lista_mensajes.release()
+                        except:
+                            sem_lista_mensajes.release()
+
+                    # Enviar respuesta LIST al cliente
+                    cant = len(chats_a_enviar)
+                    ts_now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+                    header = f"SERVER;{usuario_conectado};{ts_now};LIST;{ts_now};\"{cant}\""
+                    conn.send(header.encode())
+
+                    if conn.recv(1024).decode() == "OK":
+                        for chat_item in chats_a_enviar:
+                            conn.send(chat_item.encode())
+                            conn.recv(1024)
 
                 else:
                     conn.send("KO".encode())

@@ -396,14 +396,13 @@ if sistema_login():
         elif texto.lower().startswith("@lista"):
             gestionar_comando_lista()
 
+
         elif texto.startswith("@") and ":" in texto:
             partes = texto.split(":", 1)
-            destinatario = partes[0]
+            # CORRECCIÓN: Quitamos la @ aquí para tener el nombre limpio
+            destinatario = partes[0].replace("@", "")
             contenido = partes[1].strip()
-
+            # Ahora enviamos el nombre limpio (la función ya le pone la @ necesaria)
             enviar_confirmacion_leido(destinatario)
-
             msg_final = formatear_mensaje(MI_USUARIO, destinatario, "ENVIADO", contenido)
             enviar_al_666(msg_final)
-        else:
-            print("Formato incorrecto. Usa: @Nombre: Mensaje")

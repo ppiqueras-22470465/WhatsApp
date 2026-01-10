@@ -1,2 +1,6 @@
-Pablo;@Alvaro;20260110181937;ENTREGADO;20260110181937;"probando el leido"
-Pablo;@Alvaro;20260110182009;ENTREGADO;20260110182010;"parece funcionar"
+Pablo;@Alvaro;20260110181937;LEIDO;20260111004822;"probando el leido"
+Pablo;@Alvaro;20260110182009;LEIDO;20260111004822;"parece funcionar"
+Pablo;@Alvaro;20260111002803;LEIDO;20260111004822;"probando"
+Pablo;@Alvaro;20260111004005;LEIDO;20260111004822;"prueba de confirmacion de leido"
+Alvaro;Pablo;20260111004822;ENTREGADO;20260111004823;"probando que se confirme la lectura en todos lados"
+Alvaro;Pablo;20260111004919;ENTREGADO;20260111004919;"probando que se confirme la lectura en todos lados"
