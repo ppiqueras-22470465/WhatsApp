@@ -1,1 +1,5 @@
 Alvaro_Pablo.txt
+Pablo_Alvaro.txt
+Alvaro_Alvaro.txt
+logs/Pablo_Alvaro.txt
+logs/Pablo_Juan.txt
