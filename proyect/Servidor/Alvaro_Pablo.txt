@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 Pablo;@Alvaro;20260110181937;LEIDO;20260111004822;"probando el leido"
 Pablo;@Alvaro;20260110182009;LEIDO;20260111004822;"parece funcionar"
 Pablo;@Alvaro;20260111002803;LEIDO;20260111004822;"probando"

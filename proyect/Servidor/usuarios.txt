@@ -1,3 +1,2 @@
 Pablo:1234
 Alvaro:1234
-Juan:1234

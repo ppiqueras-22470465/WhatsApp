@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 Alvaro;@Pablo;20260111004919;LEIDO;20260111004919;"CONFIRMACION"
 Alvaro;Pablo;20260111004919;LEIDO;20260115115619;"probando que se confirme la lectura en todos lados"
 Alvaro;Pablo;20260111004822;LEIDO;20260115115619;"probando que se confirme la lectura en todos lados"
