@@ -1,7 +1,7 @@
 import socket
 import threading
 import time
-from datetime import datetime
+import datetime
 
 # --- CONFIGURACION ---
 SERVER_IP = "127.0.0.1"
@@ -20,7 +20,7 @@ SESION_ACTIVA = False
 
 def obtener_timestamp():
     """Genera la marca de tiempo para el protocolo."""
-    return datetime.now().strftime("%Y%m%d%H%M%S")
+    return datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
 
 def es_entrada_segura(texto):
