@@ -1,7 +1,6 @@
 import socket
 import threading
 import datetime
-import time
 
 # --- CONFIGURACION ---
 ip_servidor = "127.0.0.1"
@@ -69,7 +68,7 @@ def registrar_usuario(usuario, password):
 
                 if ya_existe == False:
                     f_a = open(archivo_usuarios, "a")
-                    f_a.write(usuario + ":" + password + "\n")
+                    f_a.write(f"{usuario}:{password}\n")
                     f_a.close()
                     exito = True
                     print("[SISTEMA] Nuevo usuario registrado: " + usuario)
