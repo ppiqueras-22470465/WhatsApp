@@ -70,7 +70,7 @@ def registrar_nuevo_usuario(usuario, password):
     if usuario_existente == False:
         try:
             archivo = open(archivo_usuarios, "a")
-            archivo.write(f"{usuario}:{password}\n")
+            archivo.write(f"\n{usuario}:{password}")
             archivo.close()
             registrado_ok = True
             print(f"[REGISTRO] Hemos creado el usuario: {usuario}")
@@ -113,7 +113,7 @@ def guardar_mensaje_en_archivo(mensaje_formateado):
         guardado = False
 
         while not guardado:
-            # Bloqueamos el semáforo para que solo un hilo escriba a la vez
+            # [cite_start]Bloqueamos el semáforo para que solo un hilo escriba a la vez [cite: 10]
             if sem_lista_mensajes.acquire(timeout=2):
                 try:
                     archivo_final_escribir = open(archivo_final, "a")
@@ -152,7 +152,7 @@ def guardar_mensaje_en_archivo(mensaje_formateado):
 # --- GESTIÓN DE PUERTOS ---
 
 def puerto_666():
-    """Gestionamos la recepción de mensajes y las confirmaciones de lectura."""
+    """Gestionamos la recepción de mensajes y las confirmaciones de lectura[cite: 14]."""
     servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     servidor.bind((ip_servidor, port_666))
@@ -246,7 +246,7 @@ def puerto_666():
 
 
 def gestionar_cliente_999(conn, addr):
-    """Atendemos Login, Registro y Peticiones de actualización."""
+    """Atendemos Login, Registro y Peticiones de actualización[cite: 21]."""
     print(f"[999] Atendiendo a {addr}")
     login_ok = False
     conexion_activa = True

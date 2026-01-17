@@ -26,7 +26,7 @@ def formatear_mensaje(origen, destino, estado, mensaje):
 
 
 def guardar_localmente(mensaje_formateado, es_temporal=False):
-    """Guardamos el mensaje en nuestro historial local o lo actualizamos."""
+    """Guardamos el mensaje en nuestro historial local o lo actualizamos[cite: 53, 54, 57]."""
     try:
         partes = mensaje_formateado.split(";")
         if len(partes) >= 6:
@@ -83,7 +83,7 @@ def guardar_localmente(mensaje_formateado, es_temporal=False):
 
 
 def enviar_al_666(mensaje_formateado):
-    """Enviamos el mensaje al servidor o lo guardamos localmente si falla."""
+    """Enviamos el mensaje al servidor o lo guardamos localmente si falla[cite: 14, 57]."""
     enviado = False
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -109,7 +109,7 @@ def enviar_al_666(mensaje_formateado):
 
 
 def obtener_ultimo_timestamp_local(usuario_contacto):
-    """Consultamos cuándo fue el último mensaje registrado en local."""
+    """Consultamos cuándo fue el último mensaje registrado en local[cite: 55]."""
     try:
         ruta = "Historiales/" + MI_USUARIO + "_" + usuario_contacto + ".txt"
 
@@ -133,7 +133,7 @@ def obtener_ultimo_timestamp_local(usuario_contacto):
 
 
 def procesar_mensajes_offline():
-    """Revisamos los archivos temporales para reintentar el envío."""
+    """Revisamos los archivos temporales para reintentar el envío[cite: 58]."""
     if os.path.exists("Historiales"):
         patron = os.path.join("Historiales", "*_tmp.txt")
         lista_archivos = glob.glob(patron)
@@ -181,7 +181,7 @@ def procesar_mensajes_offline():
 
 
 def gestionar_comando_lista():
-    """Solicitamos la lista de usuarios y mensajes pendientes al servidor."""
+    """Solicitamos la lista de usuarios y mensajes pendientes al servidor[cite: 38]."""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(10)
@@ -226,7 +226,7 @@ def gestionar_comando_lista():
 
 
 def hilo_recepcion_actualizaciones():
-    """Consultamos periódicamente al servidor en segundo plano."""
+    """Consultamos periódicamente al servidor en segundo plano[cite: 25]."""
     ts_ultimo = "00000000000000"
     servidor_era_inaccesible = False  # Bandera para controlar el aviso de reconexión
 
@@ -247,6 +247,11 @@ def hilo_recepcion_actualizaciones():
                 resp_login = s.recv(1024).decode()
 
                 if resp_login == "OK":
+                    # IMPORTANTE: Aquí procesamos los mensajes offline
+                    # Esto asegura que al volver la conexión, los .tmp se envíen
+                    # automáticamente sin necesidad de desloguear.
+                    procesar_mensajes_offline()
+
                     conectado = True
                     while conectado:
                         try:
@@ -314,7 +319,7 @@ def hilo_recepcion_actualizaciones():
 
 
 def sistema_login():
-    """Gestionamos el inicio de sesión del usuario."""
+    """Gestionamos el inicio de sesión del usuario[cite: 8]."""
     global MI_USUARIO, MI_PASSWORD
     print("--- INICIO DE SESIÓN ---")
     user = input("Usuario: ")
@@ -368,7 +373,7 @@ def sistema_registro():
 
 
 def enviar_confirmacion_leido(usuario_destino):
-    """Notificamos al servidor que hemos abierto una conversación."""
+    """Notificamos al servidor que hemos abierto una conversación[cite: 82, 94]."""
     try:
         msg = formatear_mensaje(MI_USUARIO, "@" + usuario_destino, "LEIDO", "CONFIRMACION")
         enviar_al_666(msg)
