@@ -2,30 +2,30 @@ import socket
 import threading
 import datetime
 import time
+import os
 
-# Configuración
+# Definimos la configuración básica de conexión y archivos
 ip_servidor = "127.0.0.1"
 archivo_usuarios = "usuarios.txt"
 port_999 = 999
 port_666 = 666
 lista_mensajes = []
 
+# Utilizamos un semáforo para evitar conflictos al escribir en archivos compartidos
 sem_lista_mensajes = threading.Semaphore(1)
 
 
-# --- FUNCIONES AUXILIARES (LÓGICA) ---
-# (validar_login, validar_archivo, ordenar_mensajes,
-#  obtener_mensajes_pendientes, guardar_mensaje_en_archivo SE QUEDAN IGUAL)
-# Copia aquí tus funciones auxiliares existentes sin cambios...
-# ... (Para ahorrar espacio asumo que las mantienes igual) ...
+# --- FUNCIONES AUXILIARES ---
 
 def validar_login(usuario, password):
+    """Comprobamos si las credenciales existen en nuestro registro."""
     encontrado = False
     try:
         archivo = open(archivo_usuarios, "r")
         archivo_leido = archivo.readlines()
         archivo.close()
         i = 0
+        # Recorremos el archivo línea a línea buscando coincidencia
         while i < len(archivo_leido) and encontrado == False:
             archivo_leido_sin_espacios = archivo_leido[i].strip()
             if len(archivo_leido_sin_espacios) > 0:
@@ -37,11 +37,54 @@ def validar_login(usuario, password):
                         encontrado = True
             i = i + 1
     except FileNotFoundError:
-        print(f"[LOGIN] No he encontrado el archivo {archivo_usuarios}")
+        print(f"[LOGIN] No hemos encontrado el archivo {archivo_usuarios}")
     return encontrado
 
 
+def registrar_nuevo_usuario(usuario, password):
+    """Intentamos registrar un usuario nuevo si no existe previamente."""
+    usuario_existente = False
+    registrado_ok = False
+
+    # Primero comprobamos si el usuario ya existe leyendo el archivo
+    try:
+        archivo = open(archivo_usuarios, "r")
+        lineas = archivo.readlines()
+        archivo.close()
+
+        i = 0
+        while i < len(lineas) and usuario_existente == False:
+            linea = lineas[i].strip()
+            if len(linea) > 0:
+                partes = linea.split(":")
+                if len(partes) >= 1:
+                    nombre_en_fichero = partes[0]
+                    if nombre_en_fichero == usuario:
+                        usuario_existente = True
+            i = i + 1
+    except FileNotFoundError:
+        # Si el archivo no existe, asumimos que no hay usuarios y lo crearemos
+        usuario_existente = False
+
+    # Si el usuario no existe, procedemos a guardarlo
+    if usuario_existente == False:
+        try:
+            archivo = open(archivo_usuarios, "a")
+            archivo.write(f"{usuario}:{password}\n")
+            archivo.close()
+            registrado_ok = True
+            print(f"[REGISTRO] Hemos creado el usuario: {usuario}")
+        except Exception as e:
+            print(f"[ERROR REGISTRO] {e}")
+            registrado_ok = False
+    else:
+        print(f"[REGISTRO] Fallido. El usuario {usuario} ya existe.")
+
+    return registrado_ok
+
+
 def validar_archivo(emisor, receptor):
+    """Determinamos el nombre del archivo de chat buscando ambas combinaciones."""
     archivo = f"{emisor}_{receptor}.txt"
     archivo_invertido = f"{receptor}_{emisor}.txt"
     try:
@@ -59,7 +102,7 @@ def validar_archivo(emisor, receptor):
 
 
 def guardar_mensaje_en_archivo(mensaje_formateado):
-    # (Manten tu función original aquí)
+    """Escribimos el mensaje físicamente en el disco gestionando la concurrencia."""
     mensaje = mensaje_formateado.decode()
     partes = mensaje.split(";")
     if len(partes) >= 6:
@@ -70,6 +113,7 @@ def guardar_mensaje_en_archivo(mensaje_formateado):
         guardado = False
 
         while not guardado:
+            # Bloqueamos el semáforo para que solo un hilo escriba a la vez
             if sem_lista_mensajes.acquire(timeout=2):
                 try:
                     archivo_final_escribir = open(archivo_final, "a")
@@ -86,7 +130,7 @@ def guardar_mensaje_en_archivo(mensaje_formateado):
                             if indice_chats[i].strip() == archivo_final:
                                 chat_registrado = True
                     except FileNotFoundError:
-                        chat_ya_registrado = False
+                        chat_registrado = False
 
                     if chat_registrado == False:
                         nuevo_indice = open("indice_chats.txt", "a")
@@ -105,11 +149,10 @@ def guardar_mensaje_en_archivo(mensaje_formateado):
         print(f"[ERROR] El mensaje recibido no tiene el formato correcto")
 
 
-# --- CORRECCIÓN PUERTO 666 (ENVÍOS) ---
-# EN servidor.py
+# --- GESTIÓN DE PUERTOS ---
 
 def puerto_666():
-    """Gestiona el ENVÍO y las CONFIRMACIONES de lectura."""
+    """Gestionamos la recepción de mensajes y las confirmaciones de lectura."""
     servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     servidor.bind((ip_servidor, port_666))
@@ -136,10 +179,10 @@ def puerto_666():
                     elif len(partes) >= 6:
                         estado = partes[3]
 
-                        # --- CASO A: Confirmación de LECTURA (LEIDO) ---
+                        # Si recibimos LEIDO, actualizamos el historial
                         if estado == "LEIDO":
-                            emisor = partes[0].replace("@", "")  # Quien lee (Yo)
-                            receptor = partes[1].replace("@", "")  # De quien leemos (El otro)
+                            emisor = partes[0].replace("@", "")
+                            receptor = partes[1].replace("@", "")
 
                             if sem_lista_mensajes.acquire(timeout=5):
                                 try:
@@ -156,8 +199,6 @@ def puerto_666():
                                         m = lines[i].strip()
                                         p = m.split(";")
 
-                                        # CORRECCIÓN CLAVE AQUÍ:
-                                        # Marcamos LEIDO si está ENTREGADO **O SI SIGUE RECIBIDO**
                                         if len(p) >= 6 and p[1].replace("@", "") == emisor:
                                             if p[3] == "ENTREGADO" or p[3] == "RECIBIDO":
                                                 ts_now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -181,7 +222,7 @@ def puerto_666():
                                     sem_lista_mensajes.release()
                                     conn.send("KO".encode())
 
-                        # --- CASO B: Mensaje Nuevo Normal ---
+                        # Si es mensaje normal, lo guardamos como RECIBIDO
                         else:
                             emisor = partes[0]
                             receptor = partes[1]
@@ -203,8 +244,9 @@ def puerto_666():
         except Exception as e:
             print(f"[ERROR 666 loop] {e}")
 
+
 def gestionar_cliente_999(conn, addr):
-    """Atiende UPDATE y LIST (arreglado)."""
+    """Atendemos Login, Registro y Peticiones de actualización."""
     print(f"[999] Atendiendo a {addr}")
     login_ok = False
     conexion_activa = True
@@ -218,7 +260,9 @@ def gestionar_cliente_999(conn, addr):
             if datos == "":
                 conexion_activa = False
             else:
+                # Identificamos el tipo de comando recibido
                 es_login = datos.startswith("LOGIN")
+                es_registro = datos.startswith("REGISTER")
                 partes = datos.split(";")
                 es_update = False
                 es_list = False
@@ -231,6 +275,7 @@ def gestionar_cliente_999(conn, addr):
                     elif partes[3] == "LIST":
                         es_list = True
 
+                # Bloque de Login
                 if es_login:
                     d = datos.split(":")
                     if len(d) == 3 and validar_login(d[1], d[2]):
@@ -241,6 +286,20 @@ def gestionar_cliente_999(conn, addr):
                         conn.send("KO".encode())
                         conexion_activa = False
 
+                # Bloque de Registro
+                elif es_registro:
+                    d = datos.split(":")
+                    if len(d) == 3:
+                        exito_registro = registrar_nuevo_usuario(d[1], d[2])
+                        if exito_registro:
+                            conn.send("OK".encode())
+                        else:
+                            conn.send("KO".encode())
+                    else:
+                        conn.send("KO".encode())
+                    conexion_activa = False
+
+                # Bloque de Actualización (Descarga de mensajes)
                 elif es_update and login_ok:
                     mensajes_a_enviar = []
 
@@ -271,14 +330,14 @@ def gestionar_cliente_999(conn, addr):
                                             estado = p[3]
                                             ts_estado = p[4]
 
-                                            # CRITERIO 1: Recibir mensajes nuevos (RECIBIDO -> ENTREGADO)
+                                            # Entregamos mensajes pendientes
                                             if destino == usuario_conectado and estado == "RECIBIDO":
                                                 mensajes_a_enviar.append(m)
                                                 now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
                                                 linea_final = f"{p[0]};{p[1]};{p[2]};ENTREGADO;{now};{p[5]}"
                                                 modificado = True
 
-                                            # CRITERIO 2: Recibir actualizaciones de MIS mensajes (ENTREGADO/LEIDO)
+                                            # Sincronizamos estados de mis envíos
                                             elif origen == usuario_conectado and ts_estado > ts_solicitado:
                                                 mensajes_a_enviar.append(m)
 
@@ -294,7 +353,7 @@ def gestionar_cliente_999(conn, addr):
                         except:
                             sem_lista_mensajes.release()
 
-                    # Enviar UPDATE al cliente
+                    # Enviamos primero la cantidad
                     cant = len(mensajes_a_enviar)
                     ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
                     cab = f"SERVER;{usuario_conectado};{ts};UPDATE;{ts};\"{cant}\""
@@ -307,8 +366,8 @@ def gestionar_cliente_999(conn, addr):
                             conn.recv(1024)
                             k = k + 1
 
+                # Bloque de Listado de conversaciones
                 elif es_list and login_ok:
-                    # --- LÓGICA DE LISTA ARREGLADA ---
                     chats_a_enviar = []
                     if sem_lista_mensajes.acquire(timeout=5):
                         try:
@@ -319,7 +378,6 @@ def gestionar_cliente_999(conn, addr):
                             while i < len(archivos):
                                 nombre = archivos[i]
                                 if usuario_conectado in nombre:
-                                    # Sacar el nombre del OTRO usuario del nombre del archivo (A_B.txt)
                                     partes_nom = nombre.replace(".txt", "").split("_")
                                     otro = ""
                                     if len(partes_nom) == 2:
@@ -328,14 +386,12 @@ def gestionar_cliente_999(conn, addr):
                                         elif partes_nom[1] == usuario_conectado:
                                             otro = partes_nom[0]
 
-                                    # Evitar duplicados si existen A_B y B_A (no debería, pero por seguridad)
                                     ya_esta = False
                                     for usr in procesados:
                                         if usr == otro: ya_esta = True
 
                                     if otro != "" and not ya_esta:
                                         procesados.append(otro)
-                                        # Contar mensajes pendientes (RECIBIDO) para MÍ en este chat
                                         pendientes = 0
                                         try:
                                             f = open(nombre, "r")
@@ -344,7 +400,6 @@ def gestionar_cliente_999(conn, addr):
                                             for l in lineas:
                                                 cp = l.split(";")
                                                 if len(cp) >= 6:
-                                                    # Si soy destino y está RECIBIDO -> Pendiente
                                                     if cp[1].replace("@", "") == usuario_conectado and cp[
                                                         3] == "RECIBIDO":
                                                         pendientes += 1
@@ -352,7 +407,6 @@ def gestionar_cliente_999(conn, addr):
                                             print(f"[ERROR LISTA] No se pudo abrir {nombre}")
 
                                         ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-                                        # Formato item lista: Otro;Yo;000;LIST;000;"Pendientes"
                                         item = f"{otro};{usuario_conectado};00000000000000;LIST;00000000000000;\"{pendientes}\""
                                         chats_a_enviar.append(item)
                                 i = i + 1
@@ -360,7 +414,7 @@ def gestionar_cliente_999(conn, addr):
                         except:
                             sem_lista_mensajes.release()
 
-                    # Enviar respuesta LIST al cliente
+                    # Enviamos la lista
                     cant = len(chats_a_enviar)
                     ts_now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
                     header = f"SERVER;{usuario_conectado};{ts_now};LIST;{ts_now};\"{cant}\""
@@ -380,24 +434,23 @@ def gestionar_cliente_999(conn, addr):
 
 
 def puerto_999():
-    """Listener principal del puerto 999 (Multihilo)."""
+    """Lanzamos el servidor de escucha para conexiones entrantes."""
     servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     servidor.bind((ip_servidor, port_999))
     servidor.listen()
-    print("Servidor [999]: Listo para Login y Updates (Multihilo).")
+    print("Servidor [999]: Listo para Login, Registro y Updates (Multihilo).")
 
     while True:
         try:
             conn, addr = servidor.accept()
-            # Lanzamos un hilo por cada cliente, igual que en Ej3Server
             t = threading.Thread(target=gestionar_cliente_999, args=(conn, addr))
             t.start()
         except Exception as e:
             print(f"[ERROR ACCEPT 999] {e}")
 
 
-# --- ARRANQUE ---
+# --- ARRANQUE PRINCIPAL ---
 hilo_envios = threading.Thread(target=puerto_666)
 hilo_recibos = threading.Thread(target=puerto_999)
 
